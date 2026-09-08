@@ -194,16 +194,19 @@ class Game {
     const statusCard = document.getElementById('status-card');
     if (statusCard) {
       statusCard.style.borderColor = '#ff1744';
-      statusCard.style.transform = 'scale(0.98)';
+      const tx = parseFloat(statusCard.dataset.hudTx) || 0;
+      const ty = parseFloat(statusCard.dataset.hudTy) || 0;
+      const scale = parseFloat(statusCard.dataset.hudScale) || 1.0;
+      statusCard.style.transform = `translate3d(${tx}px, ${ty}px, 0px) scale(${scale * 0.98})`;
       setTimeout(() => {
         statusCard.style.borderColor = '#a68449';
-        statusCard.style.transform = 'none';
+        statusCard.style.transform = `translate3d(${tx}px, ${ty}px, 0px) scale(${scale})`;
       }, 300);
     }
   }
 
   startBroadsideCharge(side) {
-    if (this.cooldowns[side] > 0 || this.playerShip.isSinking) return;
+    if (this.isCustomizingHUD || this.cooldowns[side] > 0 || this.playerShip.isSinking) return;
     this.broadsideCharge.active = true;
     this.broadsideCharge.side = side;
     this.broadsideCharge.chargeTime = 0;
@@ -218,7 +221,7 @@ class Game {
   }
 
   releaseBroadsideCharge(side) {
-    if (!this.broadsideCharge.active || this.broadsideCharge.side !== side) return;
+    if (this.isCustomizingHUD || !this.broadsideCharge.active || this.broadsideCharge.side !== side) return;
     const charge = Math.min(1.0, this.broadsideCharge.chargeTime / this.broadsideCharge.maxChargeTime);
     this.broadsideCharge.active = false;
     this.broadsideCharge.side = null;
@@ -479,7 +482,10 @@ class Game {
       const isMuted = this.sound.toggleMute();
       const txt = isMuted ? '🔇 Audio: OFF' : '🔊 Audio: ON';
       if (muteBtn) muteBtn.textContent = txt;
-      if (settingsAudioBtn) settingsAudioBtn.textContent = txt;
+      if (settingsAudioBtn) {
+        settingsAudioBtn.textContent = txt;
+        settingsAudioBtn.classList.toggle('active', !isMuted);
+      }
     };
     if (muteBtn) muteBtn.addEventListener('click', toggleSound);
     if (settingsAudioBtn) settingsAudioBtn.addEventListener('click', toggleSound);
@@ -582,6 +588,7 @@ class Game {
       };
 
       const startSteer = (e) => {
+        if (this.isCustomizingHUD) return;
         isSteering = true;
         this.isSteeringWheelActive = true;
         helmStartAngle = getCenterDist(e) - currentWheelRot;
@@ -690,107 +697,7 @@ class Game {
   initMobileControls() {
     this.mobileSteer = 0;
     const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
-    const saved = localStorage.getItem('deadmanswake_mobile_controls');
-    const defaultEnabled = saved !== null ? (saved === 'true') : isTouchDevice;
-    this.setMobileControls(defaultEnabled);
-
-    const toggleBtn = document.getElementById('btn-toggle-mobile-keys');
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', () => {
-        this.setMobileControls(!this.mobileControlsEnabled);
-      });
-    }
-
-    const btnLeft = document.getElementById('mbtn-steer-left');
-    const btnRight = document.getElementById('mbtn-steer-right');
-    const btnCenter = document.getElementById('mbtn-steer-center');
-
-    const bindTouchButton = (btn, steerVal) => {
-      if (!btn) return;
-      const start = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.mobileSteer = steerVal;
-        btn.classList.add('active');
-      };
-      const end = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.mobileSteer === steerVal) {
-          this.mobileSteer = 0;
-        }
-        btn.classList.remove('active');
-      };
-      btn.addEventListener('mousedown', start);
-      btn.addEventListener('mouseup', end);
-      btn.addEventListener('mouseleave', end);
-      btn.addEventListener('touchstart', start, { passive: false });
-      btn.addEventListener('touchend', end, { passive: false });
-    };
-
-    bindTouchButton(btnLeft, -1.0);
-    bindTouchButton(btnRight, 1.0);
-
-    if (btnCenter) {
-      const centerRudder = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.mobileSteer = 0;
-        this.playerShip.rudder = 0;
-        const helm = document.getElementById('helm-wheel');
-        if (helm) helm.style.transform = 'rotate(0rad)';
-      };
-      btnCenter.addEventListener('click', centerRudder);
-      btnCenter.addEventListener('touchstart', centerRudder, { passive: false });
-    }
-
-    // Mobile Target Lock button
-    const btnLock = document.getElementById('mbtn-lock-target');
-    if (btnLock) {
-      btnLock.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const availableTargets = this.enemies.filter(en => !en.ship.isSinking);
-        if (availableTargets.length > 0) {
-          let nextIndex = 0;
-          if (this.lockedEnemy) {
-            const curIndex = availableTargets.indexOf(this.lockedEnemy);
-            nextIndex = (curIndex + 1) % availableTargets.length;
-            this.lockedEnemy.isLockedTarget = false;
-          }
-          this.lockedEnemy = availableTargets[nextIndex];
-          this.lockedEnemy.isAlerted = true;
-          this.lockedEnemy.isLockedTarget = true;
-          this.lockedEnemy.standoff = false;
-        }
-      });
-    }
-
-    // Mobile Broadside Volley button
-    const btnVolley = document.getElementById('mbtn-fire-broadside');
-    if (btnVolley) {
-      btnVolley.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this.cooldowns.port <= 0) {
-          this.fireBroadside('port', 0.5);
-        } else if (this.cooldowns.starboard <= 0) {
-          this.fireBroadside('starboard', 0.5);
-        }
-      });
-    }
-  }
-
-  setMobileControls(enabled) {
-    this.mobileControlsEnabled = !!enabled;
-    document.body.classList.toggle('mobile-controls-active', this.mobileControlsEnabled);
-    localStorage.setItem('deadmanswake_mobile_controls', this.mobileControlsEnabled ? 'true' : 'false');
-    const toggleBtn = document.getElementById('btn-toggle-mobile-keys');
-    if (toggleBtn) {
-      toggleBtn.textContent = this.mobileControlsEnabled ? 'ON' : 'OFF';
-      if (this.mobileControlsEnabled) toggleBtn.classList.add('active');
-      else toggleBtn.classList.remove('active');
-    }
+    document.body.classList.toggle('mobile-controls-active', isTouchDevice);
   }
 
   initFullscreen() {
@@ -814,49 +721,65 @@ class Game {
 
   initCustomizer() {
     this.isCustomizingHUD = false;
+
     const customizableWidgets = [
-      'sail-lever-panel',
-      'combat-panel',
       'helm-container',
-      'mobile-controls-container',
+      'combat-panel',
+      'sail-lever-panel',
       'status-card'
     ];
 
-    // Load saved layout (v2 default: wheel on left, sails on right)
-    let savedLayout = null;
+    const STORAGE_KEY = 'deadmanswake_hud_layout_v3';
+
+    // Clear legacy corrupted layouts from older versions
     try {
-      savedLayout = JSON.parse(localStorage.getItem('deadmanswake_hud_layout_v2'));
+      localStorage.removeItem('deadmanswake_hud_layout');
+      localStorage.removeItem('deadmanswake_hud_layout_v2');
     } catch (e) {}
 
-    customizableWidgets.forEach(id => {
+    const applyWidgetTransform = (el, tx, ty, scale) => {
+      el.dataset.hudTx = tx;
+      el.dataset.hudTy = ty;
+      el.dataset.hudScale = scale;
+      el.style.transform = `translate3d(${tx}px, ${ty}px, 0px) scale(${scale})`;
+      el.style.transformOrigin = 'center center';
+    };
+
+    let savedLayout = null;
+    try {
+      savedLayout = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    } catch (e) {}
+
+    customizableWidgets.forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
 
-      // Apply saved position & scale
+      // Apply saved position & scale or defaults
       if (savedLayout && savedLayout[id]) {
         const item = savedLayout[id];
-        if (item.left) el.style.left = item.left;
-        if (item.top) el.style.top = item.top;
-        if (item.bottom) el.style.bottom = item.bottom;
-        if (item.right) el.style.right = item.right;
-        if (item.scale) {
-          el.dataset.hudScale = item.scale;
-          el.style.transform = `scale(${item.scale})`;
-          el.style.transformOrigin = 'center center';
-        }
+        const tx = typeof item.tx === 'number' ? item.tx : 0;
+        const ty = typeof item.ty === 'number' ? item.ty : 0;
+        const scale = typeof item.scale === 'number' ? item.scale : 1.0;
+        applyWidgetTransform(el, tx, ty, scale);
+      } else {
+        applyWidgetTransform(el, 0, 0, 1.0);
       }
 
-      // Add edit controls header
-      const widgetTitle = el.getAttribute('data-widget-title') || id;
-      const ctrlBar = document.createElement('div');
-      ctrlBar.className = 'widget-edit-controls';
-      ctrlBar.innerHTML = `
-        <span>${widgetTitle}</span>
-        <button class="widget-scale-btn minus" title="Shrink button">-</button>
-        <button class="widget-scale-btn plus" title="Enlarge button">+</button>
-        <span class="scale-label">${Math.round((parseFloat(el.dataset.hudScale) || 1.0) * 100)}%</span>
-      `;
-      el.appendChild(ctrlBar);
+      // Add edit controls header if not already present
+      let ctrlBar = el.querySelector('.widget-edit-controls');
+      if (!ctrlBar) {
+        const widgetTitle = el.getAttribute('data-widget-title') || id;
+        ctrlBar = document.createElement('div');
+        ctrlBar.className = 'widget-edit-controls';
+        const initialScale = parseFloat(el.dataset.hudScale) || 1.0;
+        ctrlBar.innerHTML = `
+          <span>${widgetTitle}</span>
+          <button type="button" class="widget-scale-btn minus" title="Shrink button">−</button>
+          <button type="button" class="widget-scale-btn plus" title="Enlarge button">+</button>
+          <span class="scale-label">${Math.round(initialScale * 100)}%</span>
+        `;
+        el.appendChild(ctrlBar);
+      }
 
       // Handle scale buttons
       const minusBtn = ctrlBar.querySelector('.minus');
@@ -865,67 +788,74 @@ class Game {
 
       const adjustScale = (delta) => {
         let currentScale = parseFloat(el.dataset.hudScale) || 1.0;
-        currentScale = Math.max(0.6, Math.min(1.7, currentScale + delta));
-        currentScale = Math.round(currentScale * 10) / 10;
-        el.dataset.hudScale = currentScale;
-        el.style.transform = `scale(${currentScale})`;
-        el.style.transformOrigin = 'center center';
-        label.textContent = `${Math.round(currentScale * 100)}%`;
+        currentScale = Math.max(0.5, Math.min(1.8, Math.round((currentScale + delta) * 10) / 10));
+        const tx = parseFloat(el.dataset.hudTx) || 0;
+        const ty = parseFloat(el.dataset.hudTy) || 0;
+        applyWidgetTransform(el, tx, ty, currentScale);
+        if (label) label.textContent = `${Math.round(currentScale * 100)}%`;
       };
 
-      minusBtn.addEventListener('click', (e) => { e.stopPropagation(); adjustScale(-0.1); });
-      minusBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); adjustScale(-0.1); }, { passive: true });
-      plusBtn.addEventListener('click', (e) => { e.stopPropagation(); adjustScale(0.1); });
-      plusBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); adjustScale(0.1); }, { passive: true });
+      const bindScaleBtn = (btn, delta) => {
+        if (!btn) return;
+        const onAction = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          adjustScale(delta);
+        };
+        btn.addEventListener('click', onAction);
+        btn.addEventListener('touchstart', onAction, { passive: false });
+      };
 
-      // Dragging logic
+      bindScaleBtn(minusBtn, -0.1);
+      bindScaleBtn(plusBtn, 0.1);
+
+      // Dragging logic via pointer & touch
       let isDraggingWidget = false;
-      let startMouseX = 0, startMouseY = 0;
-      let startLeft = 0, startTop = 0;
-
-      const onPointerDown = (e) => {
-        if (!this.isCustomizingHUD) return;
-        if (e.target.closest('.widget-scale-btn')) return;
-        e.preventDefault();
-        e.stopPropagation();
-
-        isDraggingWidget = true;
-        const pt = e.touches ? e.touches[0] : e;
-        startMouseX = pt.clientX;
-        startMouseY = pt.clientY;
-
-        const rect = el.getBoundingClientRect();
-        startLeft = rect.left;
-        startTop = rect.top;
-
-        // Switch to fixed positioning during custom drag
-        el.style.position = 'fixed';
-        el.style.bottom = 'auto';
-        el.style.right = 'auto';
-        el.style.left = `${startLeft}px`;
-        el.style.top = `${startTop}px`;
-      };
+      let startPointerX = 0, startPointerY = 0;
+      let baseTx = 0, baseTy = 0;
 
       const onPointerMove = (e) => {
         if (!isDraggingWidget || !this.isCustomizingHUD) return;
         e.preventDefault();
         const pt = e.touches ? e.touches[0] : e;
-        const dx = pt.clientX - startMouseX;
-        const dy = pt.clientY - startMouseY;
-        el.style.left = `${Math.max(10, Math.min(window.innerWidth - 80, startLeft + dx))}px`;
-        el.style.top = `${Math.max(10, Math.min(window.innerHeight - 80, startTop + dy))}px`;
+        const dx = pt.clientX - startPointerX;
+        const dy = pt.clientY - startPointerY;
+        const scale = parseFloat(el.dataset.hudScale) || 1.0;
+        applyWidgetTransform(el, Math.round(baseTx + dx), Math.round(baseTy + dy), scale);
       };
 
       const onPointerUp = () => {
+        if (!isDraggingWidget) return;
         isDraggingWidget = false;
+        window.removeEventListener('mousemove', onPointerMove);
+        window.removeEventListener('mouseup', onPointerUp);
+        window.removeEventListener('touchmove', onPointerMove);
+        window.removeEventListener('touchend', onPointerUp);
+        window.removeEventListener('touchcancel', onPointerUp);
+      };
+
+      const onPointerDown = (e) => {
+        if (!this.isCustomizingHUD) return;
+        if (e.target.closest('.widget-edit-controls')) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        isDraggingWidget = true;
+        const pt = e.touches ? e.touches[0] : e;
+        startPointerX = pt.clientX;
+        startPointerY = pt.clientY;
+        baseTx = parseFloat(el.dataset.hudTx) || 0;
+        baseTy = parseFloat(el.dataset.hudTy) || 0;
+
+        window.addEventListener('mousemove', onPointerMove, { passive: false });
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchmove', onPointerMove, { passive: false });
+        window.addEventListener('touchend', onPointerUp);
+        window.addEventListener('touchcancel', onPointerUp);
       };
 
       el.addEventListener('mousedown', onPointerDown);
-      window.addEventListener('mousemove', onPointerMove);
-      window.addEventListener('mouseup', onPointerUp);
       el.addEventListener('touchstart', onPointerDown, { passive: false });
-      window.addEventListener('touchmove', onPointerMove, { passive: false });
-      window.addEventListener('touchend', onPointerUp);
     });
 
     // Customizer toolbar buttons
@@ -934,6 +864,25 @@ class Game {
     const saveBtn = document.getElementById('btn-custom-save');
     const resetBtn = document.getElementById('btn-custom-reset');
     const closeBtn = document.getElementById('btn-custom-close');
+
+    const revertToSaved = () => {
+      let saved = null;
+      try {
+        saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      } catch (e) {}
+      customizableWidgets.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (saved && saved[id]) {
+          const item = saved[id];
+          applyWidgetTransform(el, item.tx || 0, item.ty || 0, item.scale || 1.0);
+        } else {
+          applyWidgetTransform(el, 0, 0, 1.0);
+        }
+        const lbl = el.querySelector('.scale-label');
+        if (lbl) lbl.textContent = `${Math.round((parseFloat(el.dataset.hudScale) || 1.0) * 100)}%`;
+      });
+    };
 
     if (openBtn) {
       openBtn.addEventListener('click', () => {
@@ -948,19 +897,17 @@ class Game {
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
         const layout = {};
-        customizableWidgets.forEach(id => {
+        customizableWidgets.forEach((id) => {
           const el = document.getElementById(id);
           if (el) {
             layout[id] = {
-              left: el.style.left,
-              top: el.style.top,
-              bottom: el.style.bottom,
-              right: el.style.right,
+              tx: parseFloat(el.dataset.hudTx) || 0,
+              ty: parseFloat(el.dataset.hudTy) || 0,
               scale: parseFloat(el.dataset.hudScale) || 1.0
             };
           }
         });
-        localStorage.setItem('deadmanswake_hud_layout', JSON.stringify(layout));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
         this.isCustomizingHUD = false;
         document.body.classList.remove('hud-editing');
         if (bar) bar.classList.add('hidden');
@@ -969,17 +916,11 @@ class Game {
 
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
-        localStorage.removeItem('deadmanswake_hud_layout');
-        customizableWidgets.forEach(id => {
+        localStorage.removeItem(STORAGE_KEY);
+        customizableWidgets.forEach((id) => {
           const el = document.getElementById(id);
           if (el) {
-            el.style.position = '';
-            el.style.left = '';
-            el.style.top = '';
-            el.style.bottom = '';
-            el.style.right = '';
-            el.style.transform = '';
-            el.dataset.hudScale = '1.0';
+            applyWidgetTransform(el, 0, 0, 1.0);
             const lbl = el.querySelector('.scale-label');
             if (lbl) lbl.textContent = '100%';
           }
@@ -992,6 +933,7 @@ class Game {
 
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
+        revertToSaved();
         this.isCustomizingHUD = false;
         document.body.classList.remove('hud-editing');
         if (bar) bar.classList.add('hidden');
@@ -1119,6 +1061,7 @@ class Game {
   }
 
   changeSail(newState) {
+    if (this.isCustomizingHUD) return;
     const clamped = Math.max(0, Math.min(2, newState));
     if (clamped !== this.playerShip.sailState) {
       this.playerShip.setSailState(clamped);

@@ -567,6 +567,9 @@
       align-items: center;
       gap: 6px;
       pointer-events: auto;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #helm-wheel {
@@ -575,6 +578,9 @@
       cursor: grab;
       filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.8));
       transition: transform 0.1s ease-out;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #helm-wheel:active {
@@ -921,19 +927,12 @@
       color: #fff;
     }
 
-    /* Top-Right Tools Bar & Minimap Alignment */
+    /* Top-Right Settings & Minimap Column */
     #hud-top-right {
       display: flex;
-      align-items: center;
-      gap: 12px;
-      pointer-events: auto;
-    }
-
-    #hud-top-right-tools {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 8px;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
       pointer-events: auto;
     }
 
@@ -1393,26 +1392,53 @@
       outline-offset: 4px;
       box-shadow: 0 0 18px rgba(255, 213, 79, 0.7) !important;
       cursor: grab !important;
-      position: absolute !important;
       z-index: 1000 !important;
+      touch-action: none !important;
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      position: relative;
+    }
+
+    body.hud-editing .hud-customizable:active {
+      cursor: grabbing !important;
+    }
+
+    /* While in edit mode, ignore events on inner buttons so dragging the widget is smooth and responsive */
+    body.hud-editing .hud-customizable * {
+      pointer-events: none;
+    }
+
+    /* Keep the scale controls interactive */
+    body.hud-editing .hud-customizable .widget-edit-controls,
+    body.hud-editing .hud-customizable .widget-edit-controls * {
+      pointer-events: auto !important;
     }
 
     .widget-edit-controls {
       position: absolute;
-      top: -28px;
-      left: 0;
+      top: -34px;
+      left: 50%;
+      transform: translateX(-50%);
       background: rgba(18, 12, 8, 0.95);
       border: 1px solid #ffd54f;
-      border-radius: 12px;
-      padding: 2px 8px;
+      border-radius: 14px;
+      padding: 3px 10px;
       display: none;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       z-index: 1002;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: bold;
       color: #ffd54f;
       white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+      touch-action: manipulation;
+    }
+
+    /* Position status card edit controls below it so they don't clip off the top edge */
+    #status-card .widget-edit-controls {
+      top: auto;
+      bottom: -34px;
     }
 
     body.hud-editing .hud-customizable .widget-edit-controls {
@@ -1423,114 +1449,352 @@
       background: #3e2723;
       border: 1px solid #a68449;
       color: #fff;
-      width: 20px;
-      height: 20px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 12px;
+      font-size: 15px;
+      line-height: 1;
+      padding: 0;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
-    .widget-scale-btn:hover {
+    .widget-scale-btn:hover, .widget-scale-btn:active {
       background: #d32f2f;
+      border-color: #ffd54f;
     }
 
-    /* Mobile Controls Container */
-    #mobile-controls-container {
-      display: none;
-      position: absolute;
-      bottom: 24px;
-      left: 20px;
-      z-index: 50;
-      pointer-events: none;
-      user-select: none;
-      -webkit-user-select: none;
+
+    /* ==========================================================================
+       Mobile Responsive HUD & Compact Health Box
+       Applies to small screens (< 900px width), low height landscape screens (< 550px),
+       touch screens, and when Mobile On-Screen Keys are enabled in Settings.
+       ========================================================================== */
+    @media (max-width: 900px), (max-height: 550px), (hover: none) and (pointer: coarse) {
+      #hud-top {
+        top: 8px;
+        left: 8px;
+        right: 8px;
+      }
+
+      .hud-panel {
+        padding: 5px 8px;
+        border-width: 1.5px;
+        border-radius: 6px;
+      }
+
+      /* Compact Top-Left Health & Status Card */
+      #hud-top-left {
+        min-width: 130px;
+        max-width: 160px;
+        gap: 4px;
+      }
+
+      #status-card, #enemy-status-card {
+        min-width: 130px;
+        max-width: 160px;
+        padding: 5px 8px;
+        gap: 3px;
+      }
+
+      .status-title {
+        font-size: 10px;
+        letter-spacing: 0.5px;
+      }
+
+      #diff-badge-indicator {
+        font-size: 7.5px;
+        padding: 1px 4px;
+      }
+
+      .hp-bar-container {
+        height: 7px;
+        border-radius: 3px;
+      }
+
+      .stats-row {
+        font-size: 8.5px;
+        gap: 4px;
+        line-height: 1.1;
+      }
+
+      .stats-row span {
+        white-space: nowrap;
+      }
+
+      .enemy-header {
+        gap: 4px;
+      }
+
+      .enemy-alert-diamond {
+        font-size: 10px;
+      }
+
+      .enemy-badge {
+        font-size: 7.5px;
+        padding: 1px 4px;
+      }
+
+      /* Compact Compass */
+      #compass-container {
+        padding: 3px 6px;
+        gap: 6px;
+      }
+
+      #compass-dial {
+        width: 38px;
+        height: 38px;
+      }
+
+      .wind-info {
+        font-size: 8.5px;
+      }
+
+      .wind-label {
+        font-size: 7.5px;
+      }
+
+      #wind-speed {
+        font-size: 9px;
+      }
+
+      #wind-status {
+        font-size: 7.5px;
+      }
+
+      /* Compact Minimap & Top-Right Tools */
+      #hud-top-right {
+        gap: 6px;
+      }
+
+
+
+      .hud-tool-btn {
+        padding: 4px 8px;
+        font-size: 9.5px;
+        border-radius: 5px;
+        gap: 4px;
+      }
+
+      #minimap-canvas {
+        width: 68px;
+        height: 68px;
+        border-width: 2px;
+      }
+
+      /* Compact Bottom HUD */
+      #hud-bottom {
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+      }
+
+      /* Compact Helm Wheel */
+      #helm-wheel {
+        width: 70px;
+        height: 70px;
+      }
+
+      #helm-container {
+        gap: 2px;
+      }
+
+      #helm-container div {
+        font-size: 8px !important;
+      }
+
+      /* Compact Broadside Cannon Buttons */
+      #combat-panel {
+        gap: 8px;
+      }
+
+      .broadside-wrapper {
+        width: 56px;
+        height: 56px;
+      }
+
+      .broadside-btn {
+        width: 56px;
+        height: 56px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
+      }
+
+      .cooldown-svg {
+        width: 60px;
+        height: 60px;
+        top: -2px;
+        left: -2px;
+      }
+
+      .btn-label {
+        font-size: 8.5px;
+      }
+
+      .reload-timer {
+        font-size: 9px;
+        margin: 1px 0;
+      }
+
+      .broadside-btn .key-hint {
+        display: none;
+      }
+
+      /* Compact Sail Panel */
+      #sail-lever-panel {
+        padding: 4px 6px;
+        gap: 4px;
+      }
+
+      #sail-lever-panel > div:first-child {
+        font-size: 8.5px !important;
+        margin-bottom: 1px !important;
+      }
+
+      .sail-step-btn {
+        height: 22px;
+        font-size: 8px;
+        padding: 2px 4px;
+        border-radius: 4px;
+      }
+
+      .lever-track {
+        width: 32px;
+        height: 72px;
+        border-radius: 16px;
+        padding: 2px 0;
+        margin: 2px 0 !important;
+      }
+
+      .sail-btn {
+        height: 18px;
+        font-size: 8px;
+      }
+
+      .lever-notch {
+        width: 14px;
+        height: 3px;
+      }
+
+
+      #p2p-hud-widget {
+        top: 48px;
+        right: 8px;
+        font-size: 9px;
+        padding: 3px 8px;
+      }
     }
 
-    body.mobile-controls-active #mobile-controls-container {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+    /* Extra narrow screens (phones in portrait: <= 600px width) */
+    @media (max-width: 600px) {
+      #compass-container {
+        display: none;
+      }
+
+
+
+      .hud-tool-btn {
+        padding: 3px 6px;
+        font-size: 8.5px;
+      }
+
+      #minimap-canvas {
+        width: 58px;
+        height: 58px;
+      }
+
+      #hud-customizer-bar {
+        width: calc(100vw - 20px);
+        padding: 6px 10px;
+        gap: 8px;
+        justify-content: space-between;
+      }
+      .customizer-info span:not(.customizer-badge) {
+        display: none;
+      }
+      .cust-btn {
+        padding: 5px 8px;
+        font-size: 11px;
+      }
     }
 
-    #mobile-dpad {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      pointer-events: auto;
-      background: rgba(20, 12, 8, 0.75);
-      border: 1.5px solid #8d6e63;
-      border-radius: 36px;
-      padding: 6px 10px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+    /* When mobile keys are explicitly active on any resolution */
+    body.mobile-controls-active #status-card,
+    body.mobile-controls-active #enemy-status-card {
+      min-width: 130px;
+      max-width: 165px;
+      padding: 5px 8px;
+      gap: 3px;
     }
-
-    .mobile-touch-btn {
-      width: 58px;
-      height: 58px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #4a2818 0%, #1c100a 100%);
-      border: 2px solid #b8860b;
-      color: #ffe082;
-      font-size: 11px;
-      font-weight: 900;
+    body.mobile-controls-active .status-title {
+      font-size: 10px;
       letter-spacing: 0.5px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7), inset 0 0 10px rgba(255, 179, 0, 0.2);
-      transition: transform 0.08s, background 0.15s, border-color 0.15s;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
     }
-
-    .mobile-touch-btn:active, .mobile-touch-btn.active {
-      transform: scale(0.92);
-      background: radial-gradient(circle at 35% 35%, #d32f2f 0%, #5d1010 100%);
-      border-color: #ffca28;
-      box-shadow: 0 0 16px rgba(255, 202, 40, 0.8);
-      color: #fff;
+    body.mobile-controls-active .hp-bar-container {
+      height: 7px;
+      border-radius: 3px;
     }
-
-    .mobile-touch-btn.center-btn {
-      width: 46px;
-      height: 46px;
+    body.mobile-controls-active .stats-row {
+      font-size: 8.5px;
+      gap: 4px;
+      line-height: 1.1;
+    }
+    body.mobile-controls-active .stats-row span {
+      white-space: nowrap;
+    }
+    body.mobile-controls-active #minimap-canvas {
+      width: 68px;
+      height: 68px;
+    }
+    body.mobile-controls-active #helm-wheel {
+      width: 70px;
+      height: 70px;
+    }
+    body.mobile-controls-active .broadside-wrapper,
+    body.mobile-controls-active .broadside-btn {
+      width: 56px;
+      height: 56px;
+    }
+    body.mobile-controls-active .cooldown-svg {
+      width: 60px;
+      height: 60px;
+    }
+    body.mobile-controls-active .btn-label {
+      font-size: 8.5px;
+    }
+    body.mobile-controls-active .reload-timer {
       font-size: 9px;
-      border-color: #795548;
+    }
+    body.mobile-controls-active .broadside-btn .key-hint {
+      display: none;
+    }
+    body.mobile-controls-active #compass-dial {
+      width: 38px;
+      height: 38px;
+    }
+    body.mobile-controls-active .lever-track {
+      width: 32px;
+      height: 72px;
+    }
+    body.mobile-controls-active .sail-btn {
+      height: 18px;
+      font-size: 8px;
+    }
+    body.mobile-controls-active .sail-step-btn {
+      height: 22px;
+      font-size: 8px;
+      padding: 2px 4px;
+    }
+    body.mobile-controls-active .hud-tool-btn {
+      padding: 4px 8px;
+      font-size: 9.5px;
     }
 
-    #mobile-quick-actions {
-      display: flex;
-      gap: 10px;
-      pointer-events: auto;
-    }
-
-    .mobile-action-btn {
-      background: linear-gradient(180deg, rgba(40, 25, 15, 0.9) 0%, rgba(20, 10, 5, 0.95) 100%);
-      border: 1.5px solid #d4af37;
-      color: #ffd54f;
-      padding: 8px 14px;
-      border-radius: 20px;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 1px;
-      cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-      user-select: none;
-    }
-
-    .mobile-action-btn:active {
-      transform: scale(0.94);
-      background: #b71c1c;
-      border-color: #ff5252;
-      color: #fff;
-    }
 
     /* Multiplayer Modal Card */
     .multiplayer-card {
@@ -1840,28 +2104,14 @@
       </div>
     </div>
 
-    <!-- Right Column: Tools (Audio, Settings) & Mini-Map aligned together without overlap -->
+    <!-- Right Column: Settings on Top, Mini-Map below -->
     <div id="hud-top-right">
-      <div id="hud-top-right-tools">
-        <button id="mute-btn" class="hud-tool-btn">🔊 Audio: ON</button>
-        <button id="btn-settings-hud" class="hud-tool-btn">⚙️ Settings</button>
-      </div>
+      <button id="btn-settings-hud" class="hud-tool-btn">⚙️ Settings</button>
       <canvas id="minimap-canvas" width="120" height="120"></canvas>
     </div>
   </div>
 
-  <!-- Mobile On-Screen Controls Container (Positioned on Left above helm) -->
-  <div id="mobile-controls-container" class="hud-customizable" data-widget-title="MOBILE DPAD">
-    <div id="mobile-dpad">
-      <button id="mbtn-steer-left" class="mobile-touch-btn" title="Steer Port (Left)">◀<span style="font-size:8.5px;">PORT</span></button>
-      <button id="mbtn-steer-center" class="mobile-touch-btn center-btn" title="Center Rudder">▲<span style="font-size:7.5px;">AHEAD</span></button>
-      <button id="mbtn-steer-right" class="mobile-touch-btn" title="Steer Starboard (Right)">▶<span style="font-size:8.5px;">STBD</span></button>
-    </div>
-    <div id="mobile-quick-actions">
-      <button id="mbtn-lock-target" class="mobile-action-btn">🎯 LOCK TARGET</button>
-      <button id="mbtn-fire-broadside" class="mobile-action-btn">💥 VOLLEY</button>
-    </div>
-  </div>
+
 
   <!-- Bottom HUD: Left = Steering Wheel, Center = Broadside Cannons, Right = Sail Speed -->
   <div id="hud-bottom">
@@ -2000,7 +2250,7 @@
               <span class="btn-icon">⚙️</span>
               <span class="btn-text">SETTINGS</span>
             </button>
-            <div class="menu-subtext">mobile supported enable on settings</div>
+            <div class="menu-subtext">Touch & desktop controls supported</div>
           </div>
         </div>
       </div>
@@ -2046,13 +2296,13 @@
             <div class="diff-header">
               <span class="diff-icon">☠️</span>
               <span class="diff-name">HARD</span>
-              <span class="diff-badge">Deadly Maelstrom</span>
+              <span class="diff-badge">Gale Force</span>
             </div>
             <div class="diff-stats">
               <div class="diff-stat player">Your Damage: <strong>-20% (0.8x)</strong></div>
               <div class="diff-stat enemy">Enemy Damage: <strong>+50% (1.5x)</strong></div>
             </div>
-            <div class="diff-desc">Ruthless Royal Navy broadsides. Punishing enemy damage and precision fire for seasoned sea dogs!</div>
+            <div class="diff-desc">High winds, unforgiving broadsides. For veteran captains seeking lethal high-seas combat.</div>
             <button class="diff-select-btn" data-difficulty="hard">SET SAIL (HARD)</button>
           </div>
         </div>
@@ -2071,13 +2321,13 @@
       </div>
 
       <div class="settings-content">
-        <!-- Setting 1: Mobile Mode Controls -->
+        <!-- Setting 1: Audio Toggle (Moved to Top of Settings) -->
         <div class="setting-row">
           <div class="setting-info">
-            <div class="setting-title">Mobile On-Screen Keys</div>
-            <div class="setting-desc">Enables virtual touch controls, D-pad steering, and mobile action buttons for touch devices.</div>
+            <div class="setting-title">Maritime Audio & SFX</div>
+            <div class="setting-desc">Realistic ocean waves, cannon volleys, and orchestral naval soundtrack.</div>
           </div>
-          <button id="btn-toggle-mobile-keys" class="setting-toggle-btn">OFF</button>
+          <button id="btn-settings-audio" class="setting-toggle-btn active">🔊 Audio: ON</button>
         </div>
 
         <!-- Setting 2: Fullscreen Mode -->
@@ -2096,15 +2346,6 @@
             <div class="setting-desc">Drag buttons to any position on screen and adjust their scale with [-] and [+] handles.</div>
           </div>
           <button id="btn-open-customizer" class="setting-action-btn primary">🎨 Customize Controls</button>
-        </div>
-
-        <!-- Setting 4: Audio Toggle -->
-        <div class="setting-row">
-          <div class="setting-info">
-            <div class="setting-title">Maritime Audio & SFX</div>
-            <div class="setting-desc">Realistic ocean waves, cannon volleys, and orchestral naval soundtrack.</div>
-          </div>
-          <button id="btn-settings-audio" class="setting-action-btn">🔊 Audio: ON</button>
         </div>
       </div>
     </div>
