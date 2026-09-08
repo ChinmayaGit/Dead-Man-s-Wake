@@ -6,8 +6,9 @@ import { EnemyShip } from './enemy.js';
 import { Archipelago } from './islands.js';
 import { SoundController } from './audio.js';
 import { CollisionSystem } from './collision.js';
+import { MultiplayerManager } from './multiplayer.js';
 
-// Camera Chase and Zoom Presets based on Sail State (authentic to AC Pirates)
+// Camera Chase and Zoom Presets based on Sail State (Dead-Man-s-Wake)
 export const SAIL_CAMERA_PRESETS = {
   0: { distance: 28.0, height: 6.5, fov: 54, lookHeight: 3.2 },  // Furled (Stop): intimate close-up view behind the stern (kept as it is)
   1: { distance: 46.0, height: 10.0, fov: 58, lookHeight: 3.8 },  // Half Sail: zoomed out a little more for tactical maneuvering
@@ -48,11 +49,23 @@ class Game {
     this.salvageQueue = [];
     this.floatingCrates = [];
 
+    // Nautical Difficulty System (easy, medium, hard)
+    this.difficulty = 'medium';
+
     this.initScene();
     this.initLights();
     this.initGameObjects();
+
+    // P2P Multiplayer (WebRTC)
+    this.multiplayer = new MultiplayerManager(this);
+
     this.initControls();
     this.initUI();
+    this.initDifficulty();
+    this.initMobileControls();
+    this.initFullscreen();
+    this.initCustomizer();
+    this.initMultiplayerUI();
 
     // Immediate initial camera alignment
     this.updateCamera(0.016, true);
@@ -124,7 +137,7 @@ class Game {
     this.ocean = new Ocean(this.scene);
     this.archipelago = new Archipelago(this.scene);
 
-    // Player Ship (Jackdaw - 3D Pirate Galleon Asset)
+    // Player Flagship (Dead-Man-s-Wake - 3D Pirate Galleon Asset)
     this.playerShip = new Ship(this.scene, this.ocean, true, 'ship-pirate-large.glb');
     this.playerShip.position.set(0, 0, 0);
 
@@ -300,13 +313,26 @@ class Game {
       if (key === 'arrowright') this.keys.d = false;
     });
 
-    // Mouse drag to orbit camera around ship
+    // Mouse & Touch drag to orbit camera around ship
     let isDragging = false;
     let prevMouseX = 0;
     let prevMouseY = 0;
 
+    const isUIElement = (target) => {
+      return !!(
+        target.closest('#hud-top') ||
+        target.closest('#hud-bottom') ||
+        target.closest('#hud-top-right-tools') ||
+        target.closest('#mobile-controls-container') ||
+        target.closest('#hud-customizer-bar') ||
+        target.closest('.modal-overlay') ||
+        target.closest('#splash-modal') ||
+        target.closest('#salvage-modal')
+      );
+    };
+
     window.addEventListener('mousedown', (e) => {
-      if (e.target.closest('#hud-top') || e.target.closest('#hud-bottom') || e.target.closest('#mute-btn')) return;
+      if (isUIElement(e.target)) return;
       isDragging = true;
       this.isMouseDragging = true;
       prevMouseX = e.clientX;
@@ -331,24 +357,134 @@ class Game {
       this.isMouseDragging = false;
       this.camLastUserDrag = performance.now();
     });
+
     window.addEventListener('wheel', (e) => {
       this.camOrbit.userZoom = Math.max(-15, Math.min(30, (this.camOrbit.userZoom || 0) + e.deltaY * 0.04));
+    });
+
+    // Touch drag & pinch-to-zoom for mobile camera
+    let touchDistanceStart = 0;
+    let isTouchDraggingCam = false;
+    let prevTouchX = 0;
+    let prevTouchY = 0;
+
+    window.addEventListener('touchstart', (e) => {
+      if (isUIElement(e.target)) return;
+      if (e.touches.length === 1) {
+        isTouchDraggingCam = true;
+        prevTouchX = e.touches[0].clientX;
+        prevTouchY = e.touches[0].clientY;
+        this.camLastUserDrag = performance.now();
+      } else if (e.touches.length === 2) {
+        isTouchDraggingCam = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        touchDistanceStart = Math.hypot(dx, dy);
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && isTouchDraggingCam) {
+        const dx = e.touches[0].clientX - prevTouchX;
+        const dy = e.touches[0].clientY - prevTouchY;
+        prevTouchX = e.touches[0].clientX;
+        prevTouchY = e.touches[0].clientY;
+
+        this.camOrbit.angleH -= dx * 0.008;
+        this.camOrbit.angleV = Math.max(0.06, Math.min(0.68, this.camOrbit.angleV + dy * 0.005));
+        this.camLastUserDrag = performance.now();
+      } else if (e.touches.length === 2 && touchDistanceStart > 0) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        const pinchDelta = touchDistanceStart - dist;
+        this.camOrbit.userZoom = Math.max(-15, Math.min(30, (this.camOrbit.userZoom || 0) + pinchDelta * 0.12));
+        touchDistanceStart = dist;
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', () => {
+      isTouchDraggingCam = false;
+      touchDistanceStart = 0;
     });
   }
 
   initUI() {
-    const startBtn = document.getElementById('start-btn');
+    // 1. Main Menu Navigation: "Set Sails", "Multiplayer", "Settings"
+    const btnSetSails = document.getElementById('btn-menu-set-sails');
+    const btnMenuMultiplayer = document.getElementById('btn-menu-multiplayer');
+    const btnMenuSettings = document.getElementById('btn-menu-settings');
+    const menuMainView = document.getElementById('menu-main-view');
+    const menuDifficultyView = document.getElementById('menu-difficulty-view');
+    const btnDiffBack = document.getElementById('btn-difficulty-back');
     const splashModal = document.getElementById('splash-modal');
-    startBtn.addEventListener('click', () => {
-      splashModal.classList.add('hidden');
-      this.sound.init();
+    const settingsModal = document.getElementById('settings-modal');
+    const multiplayerModal = document.getElementById('multiplayer-modal');
+
+    if (btnSetSails) {
+      btnSetSails.addEventListener('click', () => {
+        if (menuMainView) menuMainView.classList.add('hidden');
+        if (menuDifficultyView) menuDifficultyView.classList.remove('hidden');
+      });
+    }
+
+    if (btnDiffBack) {
+      btnDiffBack.addEventListener('click', () => {
+        if (menuDifficultyView) menuDifficultyView.classList.add('hidden');
+        if (menuMainView) menuMainView.classList.remove('hidden');
+      });
+    }
+
+    // Difficulty selection cards & buttons
+    const diffCards = document.querySelectorAll('.difficulty-card, .diff-select-btn');
+    diffCards.forEach((elem) => {
+      elem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const card = elem.classList.contains('difficulty-card') ? elem : elem.closest('.difficulty-card');
+        const diff = card ? card.getAttribute('data-difficulty') : elem.getAttribute('data-difficulty');
+        if (diff) {
+          this.setDifficulty(diff);
+          if (splashModal) splashModal.classList.add('hidden');
+          this.sound.init();
+        }
+      });
     });
 
-    const muteBtn = document.getElementById('mute-btn');
-    muteBtn.addEventListener('click', () => {
-      const isMuted = this.sound.toggleMute();
-      muteBtn.textContent = isMuted ? '🔇 Audio: OFF' : '🔊 Audio: ON';
+    // Settings Modal
+    const btnSettingsHud = document.getElementById('btn-settings-hud');
+    const btnCloseSettings = document.getElementById('btn-close-settings');
+    const openSettings = () => {
+      if (settingsModal) settingsModal.classList.remove('hidden');
+    };
+    if (btnMenuSettings) btnMenuSettings.addEventListener('click', openSettings);
+    if (btnSettingsHud) btnSettingsHud.addEventListener('click', openSettings);
+    if (btnCloseSettings) btnCloseSettings.addEventListener('click', () => {
+      if (settingsModal) settingsModal.classList.add('hidden');
     });
+
+    // Multiplayer Modal
+    const btnMultiplayerHud = document.getElementById('btn-multiplayer-hud');
+    const btnCloseMultiplayer = document.getElementById('btn-close-multiplayer');
+    const openMultiplayer = () => {
+      if (multiplayerModal) multiplayerModal.classList.remove('hidden');
+    };
+    if (btnMenuMultiplayer) btnMenuMultiplayer.addEventListener('click', openMultiplayer);
+    if (btnMultiplayerHud) btnMultiplayerHud.addEventListener('click', openMultiplayer);
+    if (btnCloseMultiplayer) btnCloseMultiplayer.addEventListener('click', () => {
+      if (multiplayerModal) multiplayerModal.classList.add('hidden');
+    });
+
+    // Audio button in top tools
+    const muteBtn = document.getElementById('mute-btn');
+    const settingsAudioBtn = document.getElementById('btn-settings-audio');
+    const toggleSound = () => {
+      const isMuted = this.sound.toggleMute();
+      const txt = isMuted ? '🔇 Audio: OFF' : '🔊 Audio: ON';
+      if (muteBtn) muteBtn.textContent = txt;
+      if (settingsAudioBtn) settingsAudioBtn.textContent = txt;
+    };
+    if (muteBtn) muteBtn.addEventListener('click', toggleSound);
+    if (settingsAudioBtn) settingsAudioBtn.addEventListener('click', toggleSound);
 
     [0, 1, 2].forEach((state) => {
       const btn = document.getElementById(`btn-sail-${state}`);
@@ -485,6 +621,481 @@ class Game {
     }
   }
 
+  initDifficulty() {
+    this.setDifficulty('medium', false);
+  }
+
+  setDifficulty(diff, notifyMultiplayer = true) {
+    this.difficulty = diff || 'medium';
+    const settings = {
+      easy: { playerMult: 1.5, enemyMult: 0.6, label: 'EASY' },
+      medium: { playerMult: 1.0, enemyMult: 1.0, label: 'MED' },
+      hard: { playerMult: 0.8, enemyMult: 1.5, label: 'HARD' }
+    };
+    const s = settings[this.difficulty] || settings.medium;
+    if (this.combat) {
+      this.combat.setDifficultyMultipliers(s.playerMult, s.enemyMult);
+    }
+    if (this.collision) {
+      this.collision.setDifficultyMultipliers(s.playerMult, s.enemyMult);
+    }
+    const badge = document.getElementById('diff-badge-indicator');
+    if (badge) {
+      badge.textContent = s.label;
+      if (this.difficulty === 'easy') {
+        badge.style.color = '#81c784';
+        badge.style.borderColor = '#4caf50';
+      } else if (this.difficulty === 'hard') {
+        badge.style.color = '#ff8a80';
+        badge.style.borderColor = '#f44336';
+      } else {
+        badge.style.color = '#ffd54f';
+        badge.style.borderColor = '#ffb300';
+      }
+    }
+    document.querySelectorAll('.difficulty-card').forEach((c) => {
+      if (c.getAttribute('data-difficulty') === this.difficulty) {
+        c.classList.add('selected');
+      } else {
+        c.classList.remove('selected');
+      }
+    });
+    if (notifyMultiplayer && this.multiplayer && this.multiplayer.isConnected && this.multiplayer.role === 'host') {
+      this.multiplayer.send({ type: 'handshake', difficulty: this.difficulty });
+    }
+  }
+
+  initMobileControls() {
+    this.mobileSteer = 0;
+    const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    const saved = localStorage.getItem('deadmanswake_mobile_controls');
+    const defaultEnabled = saved !== null ? (saved === 'true') : isTouchDevice;
+    this.setMobileControls(defaultEnabled);
+
+    const toggleBtn = document.getElementById('btn-toggle-mobile-keys');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        this.setMobileControls(!this.mobileControlsEnabled);
+      });
+    }
+
+    const btnLeft = document.getElementById('mbtn-steer-left');
+    const btnRight = document.getElementById('mbtn-steer-right');
+    const btnCenter = document.getElementById('mbtn-steer-center');
+
+    const bindTouchButton = (btn, steerVal) => {
+      if (!btn) return;
+      const start = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.mobileSteer = steerVal;
+        btn.classList.add('active');
+      };
+      const end = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.mobileSteer === steerVal) {
+          this.mobileSteer = 0;
+        }
+        btn.classList.remove('active');
+      };
+      btn.addEventListener('mousedown', start);
+      btn.addEventListener('mouseup', end);
+      btn.addEventListener('mouseleave', end);
+      btn.addEventListener('touchstart', start, { passive: false });
+      btn.addEventListener('touchend', end, { passive: false });
+    };
+
+    bindTouchButton(btnLeft, -1.0);
+    bindTouchButton(btnRight, 1.0);
+
+    if (btnCenter) {
+      const centerRudder = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.mobileSteer = 0;
+        this.playerShip.rudder = 0;
+        const helm = document.getElementById('helm-wheel');
+        if (helm) helm.style.transform = 'rotate(0rad)';
+      };
+      btnCenter.addEventListener('click', centerRudder);
+      btnCenter.addEventListener('touchstart', centerRudder, { passive: false });
+    }
+
+    // Mobile Target Lock button
+    const btnLock = document.getElementById('mbtn-lock-target');
+    if (btnLock) {
+      btnLock.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const availableTargets = this.enemies.filter(en => !en.ship.isSinking);
+        if (availableTargets.length > 0) {
+          let nextIndex = 0;
+          if (this.lockedEnemy) {
+            const curIndex = availableTargets.indexOf(this.lockedEnemy);
+            nextIndex = (curIndex + 1) % availableTargets.length;
+            this.lockedEnemy.isLockedTarget = false;
+          }
+          this.lockedEnemy = availableTargets[nextIndex];
+          this.lockedEnemy.isAlerted = true;
+          this.lockedEnemy.isLockedTarget = true;
+          this.lockedEnemy.standoff = false;
+        }
+      });
+    }
+
+    // Mobile Broadside Volley button
+    const btnVolley = document.getElementById('mbtn-fire-broadside');
+    if (btnVolley) {
+      btnVolley.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.cooldowns.port <= 0) {
+          this.fireBroadside('port', 0.5);
+        } else if (this.cooldowns.starboard <= 0) {
+          this.fireBroadside('starboard', 0.5);
+        }
+      });
+    }
+  }
+
+  setMobileControls(enabled) {
+    this.mobileControlsEnabled = !!enabled;
+    document.body.classList.toggle('mobile-controls-active', this.mobileControlsEnabled);
+    localStorage.setItem('deadmanswake_mobile_controls', this.mobileControlsEnabled ? 'true' : 'false');
+    const toggleBtn = document.getElementById('btn-toggle-mobile-keys');
+    if (toggleBtn) {
+      toggleBtn.textContent = this.mobileControlsEnabled ? 'ON' : 'OFF';
+      if (this.mobileControlsEnabled) toggleBtn.classList.add('active');
+      else toggleBtn.classList.remove('active');
+    }
+  }
+
+  initFullscreen() {
+    const fsBtn = document.getElementById('btn-toggle-fullscreen');
+    if (!fsBtn) return;
+
+    const updateFsText = () => {
+      fsBtn.textContent = document.fullscreenElement ? '⛶ Exit Fullscreen' : '⛶ Enter Fullscreen';
+    };
+
+    fsBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    document.addEventListener('fullscreenchange', updateFsText);
+  }
+
+  initCustomizer() {
+    this.isCustomizingHUD = false;
+    const customizableWidgets = [
+      'sail-lever-panel',
+      'combat-panel',
+      'helm-container',
+      'mobile-controls-container',
+      'status-card'
+    ];
+
+    // Load saved layout
+    let savedLayout = null;
+    try {
+      savedLayout = JSON.parse(localStorage.getItem('deadmanswake_hud_layout'));
+    } catch (e) {}
+
+    customizableWidgets.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      // Apply saved position & scale
+      if (savedLayout && savedLayout[id]) {
+        const item = savedLayout[id];
+        if (item.left) el.style.left = item.left;
+        if (item.top) el.style.top = item.top;
+        if (item.bottom) el.style.bottom = item.bottom;
+        if (item.right) el.style.right = item.right;
+        if (item.scale) {
+          el.dataset.hudScale = item.scale;
+          el.style.transform = `scale(${item.scale})`;
+          el.style.transformOrigin = 'center center';
+        }
+      }
+
+      // Add edit controls header
+      const widgetTitle = el.getAttribute('data-widget-title') || id;
+      const ctrlBar = document.createElement('div');
+      ctrlBar.className = 'widget-edit-controls';
+      ctrlBar.innerHTML = `
+        <span>${widgetTitle}</span>
+        <button class="widget-scale-btn minus" title="Shrink button">-</button>
+        <button class="widget-scale-btn plus" title="Enlarge button">+</button>
+        <span class="scale-label">${Math.round((parseFloat(el.dataset.hudScale) || 1.0) * 100)}%</span>
+      `;
+      el.appendChild(ctrlBar);
+
+      // Handle scale buttons
+      const minusBtn = ctrlBar.querySelector('.minus');
+      const plusBtn = ctrlBar.querySelector('.plus');
+      const label = ctrlBar.querySelector('.scale-label');
+
+      const adjustScale = (delta) => {
+        let currentScale = parseFloat(el.dataset.hudScale) || 1.0;
+        currentScale = Math.max(0.6, Math.min(1.7, currentScale + delta));
+        currentScale = Math.round(currentScale * 10) / 10;
+        el.dataset.hudScale = currentScale;
+        el.style.transform = `scale(${currentScale})`;
+        el.style.transformOrigin = 'center center';
+        label.textContent = `${Math.round(currentScale * 100)}%`;
+      };
+
+      minusBtn.addEventListener('click', (e) => { e.stopPropagation(); adjustScale(-0.1); });
+      minusBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); adjustScale(-0.1); }, { passive: true });
+      plusBtn.addEventListener('click', (e) => { e.stopPropagation(); adjustScale(0.1); });
+      plusBtn.addEventListener('touchstart', (e) => { e.stopPropagation(); adjustScale(0.1); }, { passive: true });
+
+      // Dragging logic
+      let isDraggingWidget = false;
+      let startMouseX = 0, startMouseY = 0;
+      let startLeft = 0, startTop = 0;
+
+      const onPointerDown = (e) => {
+        if (!this.isCustomizingHUD) return;
+        if (e.target.closest('.widget-scale-btn')) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        isDraggingWidget = true;
+        const pt = e.touches ? e.touches[0] : e;
+        startMouseX = pt.clientX;
+        startMouseY = pt.clientY;
+
+        const rect = el.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+
+        // Switch to fixed positioning during custom drag
+        el.style.position = 'fixed';
+        el.style.bottom = 'auto';
+        el.style.right = 'auto';
+        el.style.left = `${startLeft}px`;
+        el.style.top = `${startTop}px`;
+      };
+
+      const onPointerMove = (e) => {
+        if (!isDraggingWidget || !this.isCustomizingHUD) return;
+        e.preventDefault();
+        const pt = e.touches ? e.touches[0] : e;
+        const dx = pt.clientX - startMouseX;
+        const dy = pt.clientY - startMouseY;
+        el.style.left = `${Math.max(10, Math.min(window.innerWidth - 80, startLeft + dx))}px`;
+        el.style.top = `${Math.max(10, Math.min(window.innerHeight - 80, startTop + dy))}px`;
+      };
+
+      const onPointerUp = () => {
+        isDraggingWidget = false;
+      };
+
+      el.addEventListener('mousedown', onPointerDown);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+      el.addEventListener('touchstart', onPointerDown, { passive: false });
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp);
+    });
+
+    // Customizer toolbar buttons
+    const openBtn = document.getElementById('btn-open-customizer');
+    const bar = document.getElementById('hud-customizer-bar');
+    const saveBtn = document.getElementById('btn-custom-save');
+    const resetBtn = document.getElementById('btn-custom-reset');
+    const closeBtn = document.getElementById('btn-custom-close');
+
+    if (openBtn) {
+      openBtn.addEventListener('click', () => {
+        const settingsModal = document.getElementById('settings-modal');
+        if (settingsModal) settingsModal.classList.add('hidden');
+        this.isCustomizingHUD = true;
+        document.body.classList.add('hud-editing');
+        if (bar) bar.classList.remove('hidden');
+      });
+    }
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        const layout = {};
+        customizableWidgets.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            layout[id] = {
+              left: el.style.left,
+              top: el.style.top,
+              bottom: el.style.bottom,
+              right: el.style.right,
+              scale: parseFloat(el.dataset.hudScale) || 1.0
+            };
+          }
+        });
+        localStorage.setItem('deadmanswake_hud_layout', JSON.stringify(layout));
+        this.isCustomizingHUD = false;
+        document.body.classList.remove('hud-editing');
+        if (bar) bar.classList.add('hidden');
+      });
+    }
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        localStorage.removeItem('deadmanswake_hud_layout');
+        customizableWidgets.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) {
+            el.style.position = '';
+            el.style.left = '';
+            el.style.top = '';
+            el.style.bottom = '';
+            el.style.right = '';
+            el.style.transform = '';
+            el.dataset.hudScale = '1.0';
+            const lbl = el.querySelector('.scale-label');
+            if (lbl) lbl.textContent = '100%';
+          }
+        });
+        this.isCustomizingHUD = false;
+        document.body.classList.remove('hud-editing');
+        if (bar) bar.classList.add('hidden');
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        this.isCustomizingHUD = false;
+        document.body.classList.remove('hud-editing');
+        if (bar) bar.classList.add('hidden');
+      });
+    }
+  }
+
+  initMultiplayerUI() {
+    const modal = document.getElementById('multiplayer-modal');
+    const tabHost = document.getElementById('tab-host');
+    const tabJoin = document.getElementById('tab-join');
+    const hostPanel = document.getElementById('mp-host-panel');
+    const joinPanel = document.getElementById('mp-join-panel');
+    const connPanel = document.getElementById('mp-connected-panel');
+
+    const btnCreateHost = document.getElementById('btn-create-host');
+    const hostIdle = document.getElementById('mp-host-idle');
+    const hostActive = document.getElementById('mp-host-active');
+    const hostCodeVal = document.getElementById('host-code-val');
+    const copyBtn = document.getElementById('btn-copy-code');
+    const btnSubmitJoin = document.getElementById('btn-submit-join');
+    const joinInput = document.getElementById('join-room-input');
+    const joinStatus = document.getElementById('mp-join-status');
+    const btnStartMp = document.getElementById('btn-start-multiplayer-game');
+
+    // Emote buttons
+    const btnEmoteAhoy = document.getElementById('btn-p2p-emote-ahoy');
+    const btnEmoteAttack = document.getElementById('btn-p2p-emote-attack');
+    const btnEmoteFollow = document.getElementById('btn-p2p-emote-follow');
+
+    if (btnEmoteAhoy) btnEmoteAhoy.addEventListener('click', () => this.multiplayer.sendEmote('☠️', 'Ahoy, Matey!'));
+    if (btnEmoteAttack) btnEmoteAttack.addEventListener('click', () => this.multiplayer.sendEmote('⚔️', 'Prepare Broadside!'));
+    if (btnEmoteFollow) btnEmoteFollow.addEventListener('click', () => this.multiplayer.sendEmote('🌊', 'Form Fleet & Follow!'));
+
+    if (tabHost) {
+      tabHost.addEventListener('click', () => {
+        tabHost.classList.add('active');
+        if (tabJoin) tabJoin.classList.remove('active');
+        if (hostPanel) hostPanel.classList.remove('hidden');
+        if (joinPanel) joinPanel.classList.add('hidden');
+      });
+    }
+
+    if (tabJoin) {
+      tabJoin.addEventListener('click', () => {
+        tabJoin.classList.add('active');
+        if (tabHost) tabHost.classList.remove('active');
+        if (joinPanel) joinPanel.classList.remove('hidden');
+        if (hostPanel) hostPanel.classList.add('hidden');
+      });
+    }
+
+    if (btnCreateHost) {
+      btnCreateHost.addEventListener('click', () => {
+        this.multiplayer.hostGame((code) => {
+          if (hostIdle) hostIdle.classList.add('hidden');
+          if (hostActive) hostActive.classList.remove('hidden');
+          if (hostCodeVal) hostCodeVal.textContent = code;
+        });
+      });
+    }
+
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const code = hostCodeVal ? hostCodeVal.textContent : '';
+        if (code && navigator.clipboard) {
+          navigator.clipboard.writeText(code).then(() => {
+            copyBtn.textContent = '✅ Copied!';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+          });
+        }
+      });
+    }
+
+    if (btnSubmitJoin && joinInput) {
+      btnSubmitJoin.addEventListener('click', () => {
+        const code = joinInput.value.trim();
+        if (!code) {
+          if (joinStatus) {
+            joinStatus.className = 'mp-status-msg error';
+            joinStatus.textContent = 'Please enter a valid 5-letter Room Code';
+          }
+          return;
+        }
+        if (joinStatus) {
+          joinStatus.className = 'mp-status-msg info';
+          joinStatus.textContent = `Connecting to room ${code.toUpperCase()}...`;
+        }
+        this.multiplayer.joinGame(code);
+      });
+    }
+
+    this.multiplayer.callbacks.onStatus = (msg, type) => {
+      if (joinStatus) {
+        joinStatus.className = `mp-status-msg ${type || 'info'}`;
+        joinStatus.textContent = msg;
+      }
+      const hostStatus = document.getElementById('mp-host-status');
+      if (hostStatus) hostStatus.textContent = msg;
+    };
+
+    this.multiplayer.callbacks.onConnect = (role, code) => {
+      if (hostPanel) hostPanel.classList.add('hidden');
+      if (joinPanel) joinPanel.classList.add('hidden');
+      if (connPanel) connPanel.classList.remove('hidden');
+      const p2pHud = document.getElementById('p2p-hud-widget');
+      if (p2pHud) p2pHud.classList.remove('hidden');
+      const p2pCrewStatus = document.getElementById('p2p-crew-status');
+      if (p2pCrewStatus) p2pCrewStatus.textContent = `Crew (${code}): Connected`;
+    };
+
+    this.multiplayer.callbacks.onDisconnect = () => {
+      const p2pHud = document.getElementById('p2p-hud-widget');
+      if (p2pHud) p2pHud.classList.add('hidden');
+    };
+
+    if (btnStartMp) {
+      btnStartMp.addEventListener('click', () => {
+        if (modal) modal.classList.add('hidden');
+        const splash = document.getElementById('splash-modal');
+        if (splash) splash.classList.add('hidden');
+        this.sound.init();
+      });
+    }
+  }
+
   changeSail(newState) {
     const clamped = Math.max(0, Math.min(2, newState));
     if (clamped !== this.playerShip.sailState) {
@@ -522,8 +1133,15 @@ class Game {
       btn.classList.add('reloading');
     }
 
-    const targetShips = this.enemies.map(e => e.ship);
+    const targetShips = [...this.enemies.map(e => e.ship)];
+    if (this.multiplayer && this.multiplayer.remoteShip && !this.multiplayer.remoteShip.isSinking) {
+      targetShips.push(this.multiplayer.remoteShip);
+    }
     this.combat.fireBroadside(this.playerShip, targetShips, side, charge);
+
+    if (this.multiplayer) {
+      this.multiplayer.notifyBroadsideFired(side, charge);
+    }
   }
 
   updateCamera(delta, immediate = false) {
@@ -636,7 +1254,9 @@ class Game {
 
   updateControls(delta) {
     const wheel = document.getElementById('helm-wheel');
-    if (this.keys.a) {
+    if (this.mobileSteer !== 0 && this.mobileSteer !== undefined) {
+      this.playerShip.rudder = THREE.MathUtils.lerp(this.playerShip.rudder, this.mobileSteer, delta * 7.0);
+    } else if (this.keys.a) {
       // Steer Port / Left
       this.playerShip.rudder = THREE.MathUtils.lerp(this.playerShip.rudder, -1.0, delta * 7.0);
     } else if (this.keys.d) {
@@ -848,6 +1468,19 @@ class Game {
         ctx.fill();
       }
     });
+
+    // Remote Peer Ship (P2P Multiplayer)
+    if (this.multiplayer && this.multiplayer.remoteShip && !this.multiplayer.remoteShip.isSinking) {
+      const rRelX = (this.multiplayer.remoteShip.position.x - this.playerShip.position.x) * scale;
+      const rRelZ = (this.multiplayer.remoteShip.position.z - this.playerShip.position.z) * scale;
+      ctx.beginPath();
+      ctx.arc(rRelX, rRelZ, 5.0, 0, Math.PI * 2);
+      ctx.fillStyle = '#00e5ff';
+      ctx.fill();
+      ctx.strokeStyle = '#ffd54f';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
 
     // Player
     ctx.restore();
@@ -1115,6 +1748,11 @@ class Game {
     this.collision.update(delta, this.playerShip, this.enemies);
     this.combat.update(delta);
 
+    // Update P2P multiplayer remote ship
+    if (this.multiplayer) {
+      this.multiplayer.update(delta);
+    }
+
     // Update floating wreckage crates bobbing on ocean waves
     if (this.floatingCrates && this.floatingCrates.length > 0) {
       for (let i = this.floatingCrates.length - 1; i >= 0; i--) {
@@ -1138,7 +1776,7 @@ class Game {
 
     // 3. Camera & HUD
     if (this.isFirstFrame) {
-      console.log('⛵ [AC Pirates] First frame rendered! Ship pos:', this.playerShip.position);
+      console.log('⛵ [Dead-Man-s-Wake] First frame rendered! Ship pos:', this.playerShip.position);
     }
     this.updateCamera(delta, this.isFirstFrame);
     this.isFirstFrame = false;
@@ -1151,10 +1789,10 @@ class Game {
 
 function bootGame() {
   if (window.__gameInstance) return;
-  console.log('⛵ [AC Pirates] Booting game engine...');
+  console.log('⛵ [Dead-Man-s-Wake] Booting game engine...');
   window.__gameInstance = new Game();
   window.game = window.__gameInstance;
-  console.log('⛵ [AC Pirates] Game engine initialized successfully!');
+  console.log('⛵ [Dead-Man-s-Wake] Game engine initialized successfully!');
   if (typeof window !== 'undefined') {
     if (window.location.search.includes('autostart')) {
       const modal = document.getElementById('splash-modal');

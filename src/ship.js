@@ -19,7 +19,7 @@ function createFoamTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-// Authentic Speed Presets from Ubisoft Montpellier: PlayerImmersivePhysics.lua (Lines 24-57)
+// Authentic Naval Speed Presets (Dead-Man-s-Wake)
 export const SPEED_PRESETS = [
   // NO_SAIL (Index 0)
   {
@@ -183,7 +183,7 @@ export class Ship {
 
         this.modelContainer.add(model);
         this.loadedModel = model;
-        console.log(`⛵ [AC Pirates] 3D model loaded successfully: ${modelName}`);
+        console.log(`⛵ [Dead-Man-s-Wake] 3D model loaded successfully: ${modelName}`);
       },
       undefined,
       (err) => {
@@ -253,7 +253,7 @@ export class Ship {
     if (typeof this.rudder !== 'number' || isNaN(this.rudder)) this.rudder = 0;
     if (typeof this.heading !== 'number' || isNaN(this.heading)) this.heading = 0;
 
-    // Authentic AC Pirates cosine steering curve:
+    // Naval cosine steering curve:
     // steerFactor = (1 - cos(|modifier| * Pi)) * 0.5 * sign(modifier)
     const modifier = THREE.MathUtils.clamp(this.rudder, -1.0, 1.0);
     const steerFactor = (1.0 - Math.cos(Math.abs(modifier) * Math.PI)) * 0.5 * Math.sign(modifier);
@@ -300,7 +300,7 @@ export class Ship {
 
     let targetVel = preset.targetVelocity;
 
-    // Authentic AC Pirates Wind Mechanics:
+    // Authentic Naval Wind Mechanics:
     // Ship ALWAYS moves forward in the steered direction!
     // - Tailwind (+1.0 alignment): +30% speed boost
     // - Crosswind (0.0 alignment): 100% normal cruise speed
@@ -457,5 +457,12 @@ export class Ship {
       origins.push(pos);
     });
     return origins;
+  }
+
+  updateGroupTransform() {
+    this.group.position.set(this.position.x, this.heave, this.position.z);
+    this.group.rotation.set(0, this.heading, 0);
+    this.modelContainer.rotation.x = this.pitch;
+    this.modelContainer.rotation.z = this.roll;
   }
 }

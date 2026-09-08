@@ -11,6 +11,8 @@ export class CombatSystem {
     this.flashes = [];
     this.damageNumbers = [];
     this.onShipHit = null;
+    this.playerDamageMultiplier = 1.0;
+    this.enemyDamageMultiplier = 1.0;
 
     // Cannonball material & geometry
     this.ballGeo = new THREE.SphereGeometry(0.26, 8, 8);
@@ -22,6 +24,11 @@ export class CombatSystem {
 
     // Initialize Long-Range Aiming System (Yellow Transparent Sector + Ballistic Arc)
     this.initAimVisuals();
+  }
+
+  setDifficultyMultipliers(playerMult = 1.0, enemyMult = 1.0) {
+    this.playerDamageMultiplier = playerMult;
+    this.enemyDamageMultiplier = enemyMult;
   }
 
   initAimVisuals() {
@@ -678,7 +685,8 @@ export class CombatSystem {
             const isPlayerFiring = (b.firingShip && b.firingShip.isPlayer);
             const baseBallDamage = isPlayerFiring ? 12 : 9;
             const chargeBonus = Math.round((b.charge || 0) * 4);
-            const finalDamage = Math.max(6, Math.round((baseBallDamage + chargeBonus) * proximityMultiplier));
+            const dmgMult = isPlayerFiring ? (this.playerDamageMultiplier || 1.0) : (this.enemyDamageMultiplier || 1.0);
+            const finalDamage = Math.max(4, Math.round((baseBallDamage + chargeBonus) * proximityMultiplier * dmgMult));
 
             tShip.takeDamage(finalDamage);
             this.spawnSplinterExplosion(currPos);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Assassin's Creed: Pirates - Web Revival</title>
+  <title>Dead-Man-s-Wake</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☠️</text></svg>" />
   <script>
     function displayDebugError(msg) {
@@ -825,22 +825,950 @@
       50% { transform: scale(1.35); color: #ffd700; text-shadow: 0 0 24px #ff9800; }
       100% { transform: scale(1); color: #ffd54f; text-shadow: none; }
     }
+
+    /* Modal Overlay Base */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, rgba(10, 5, 2, 0.85) 0%, rgba(5, 2, 1, 0.96) 100%);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 1;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+      visibility: visible;
+      pointer-events: auto;
+    }
+
+    .modal-overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #8d6e63;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+    }
+
+    .modal-header h2 {
+      font-size: 22px;
+      color: #ffd54f;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-shadow: 0 0 10px rgba(255, 213, 79, 0.5);
+    }
+
+    .modal-close-btn {
+      background: rgba(40, 20, 10, 0.8);
+      border: 1px solid #a68449;
+      color: #dfcfb2;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .modal-close-btn:hover {
+      background: #b71c1c;
+      border-color: #ff5252;
+      color: #fff;
+    }
+
+    /* Top-Right Tools Bar */
+    #hud-top-right-tools {
+      position: absolute;
+      top: 16px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 15;
+      pointer-events: auto;
+    }
+
+    .hud-tool-btn {
+      background: linear-gradient(180deg, rgba(38, 26, 18, 0.9) 0%, rgba(20, 14, 10, 0.95) 100%);
+      border: 1px solid #b8860b;
+      color: #e5c378;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      user-select: none;
+    }
+
+    .hud-tool-btn:hover {
+      border-color: #ffd54f;
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(255, 213, 79, 0.3);
+    }
+
+    /* Main Menu View in Splash Modal */
+    .splash-card {
+      background: linear-gradient(180deg, rgba(28, 18, 12, 0.96) 0%, rgba(14, 8, 5, 0.98) 100%);
+      border: 2px solid #d4af37;
+      border-radius: 16px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 32px rgba(212, 175, 55, 0.3);
+      padding: 32px 40px;
+      max-width: 620px;
+      width: 92%;
+      max-height: 92vh;
+      overflow-y: auto;
+      text-align: center;
+      animation: salvagePopIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .main-menu-options {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-top: 24px;
+      align-items: center;
+    }
+
+    .main-menu-btn {
+      width: 100%;
+      max-width: 380px;
+      padding: 15px 28px;
+      border-radius: 30px;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: all 0.22s ease;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+      user-select: none;
+    }
+
+    .main-menu-btn.primary-btn {
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      color: #fff;
+      border: 2px solid #ffb300;
+      box-shadow: 0 8px 24px rgba(211, 47, 47, 0.5);
+    }
+
+    .main-menu-btn.primary-btn:hover {
+      transform: scale(1.04);
+      box-shadow: 0 10px 30px rgba(255, 179, 0, 0.7);
+      border-color: #ffd54f;
+    }
+
+    .main-menu-btn.secondary-btn {
+      background: linear-gradient(180deg, #1976d2 0%, #0d47a1 100%);
+      color: #e3f2fd;
+      border: 2px solid #64b5f6;
+      box-shadow: 0 8px 24px rgba(25, 118, 210, 0.4);
+    }
+
+    .main-menu-btn.secondary-btn:hover {
+      transform: scale(1.04);
+      box-shadow: 0 10px 30px rgba(100, 181, 246, 0.6);
+      border-color: #90caf9;
+    }
+
+    .main-menu-btn.settings-btn {
+      background: linear-gradient(180deg, #455a64 0%, #263238 100%);
+      color: #eceff1;
+      border: 2px solid #b0bec5;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    }
+
+    .main-menu-btn.settings-btn:hover {
+      transform: scale(1.04);
+      box-shadow: 0 8px 24px rgba(207, 216, 220, 0.5);
+      border-color: #ffd54f;
+    }
+
+    .settings-menu-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .menu-subtext {
+      font-size: 11.5px;
+      color: #ffd54f;
+      letter-spacing: 0.8px;
+      margin-top: 6px;
+      text-transform: lowercase;
+      font-style: italic;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+      opacity: 0.92;
+    }
+
+    /* Difficulty View */
+    #menu-difficulty-view {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    #menu-difficulty-view.hidden {
+      display: none;
+    }
+
+    .difficulty-title {
+      font-size: 26px;
+      color: #ffd54f;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      text-shadow: 0 0 14px rgba(255, 213, 79, 0.5);
+    }
+
+    .difficulty-subtitle {
+      font-size: 13px;
+      color: #b0bec5;
+      margin-bottom: 20px;
+      max-width: 480px;
+    }
+
+    .difficulty-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      margin-bottom: 20px;
+    }
+
+    .difficulty-card {
+      background: linear-gradient(180deg, rgba(38, 25, 18, 0.85) 0%, rgba(20, 12, 8, 0.95) 100%);
+      border: 2px solid #8d6e63;
+      border-radius: 10px;
+      padding: 14px 18px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .difficulty-card:hover, .difficulty-card.selected {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+    }
+
+    .difficulty-card.easy:hover, .difficulty-card.easy.selected {
+      border-color: #66bb6a;
+      box-shadow: 0 6px 20px rgba(102, 187, 106, 0.35);
+    }
+
+    .difficulty-card.medium:hover, .difficulty-card.medium.selected {
+      border-color: #ffca28;
+      box-shadow: 0 6px 20px rgba(255, 202, 40, 0.35);
+    }
+
+    .difficulty-card.hard:hover, .difficulty-card.hard.selected {
+      border-color: #ef5350;
+      box-shadow: 0 6px 20px rgba(239, 83, 80, 0.35);
+    }
+
+    .diff-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .diff-icon {
+      font-size: 22px;
+    }
+
+    .diff-name {
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+
+    .diff-badge {
+      font-size: 11px;
+      font-weight: bold;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-left: auto;
+      text-transform: uppercase;
+    }
+
+    .difficulty-card.easy .diff-badge { background: rgba(76, 175, 80, 0.3); color: #a5d6a7; border: 1px solid #4caf50; }
+    .difficulty-card.medium .diff-badge { background: rgba(255, 179, 0, 0.3); color: #ffe082; border: 1px solid #ffb300; }
+    .difficulty-card.hard .diff-badge { background: rgba(244, 67, 54, 0.3); color: #ffcdd2; border: 1px solid #f44336; }
+
+    .diff-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      margin: 2px 0;
+    }
+
+    .diff-stat.player strong { color: #81c784; }
+    .diff-stat.enemy strong { color: #ff8a80; }
+
+    .diff-desc {
+      font-size: 11.5px;
+      color: #cfd8dc;
+      line-height: 1.35;
+    }
+
+    .diff-select-btn {
+      align-self: flex-end;
+      background: linear-gradient(180deg, #c62828 0%, #8b0000 100%);
+      border: 1px solid #ffb300;
+      color: #fff;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      padding: 6px 14px;
+      border-radius: 16px;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .diff-select-btn:hover {
+      background: linear-gradient(180deg, #e53935 0%, #b71c1c 100%);
+      transform: scale(1.05);
+    }
+
+    .secondary-back-btn {
+      background: rgba(30, 20, 14, 0.8);
+      border: 1px solid #8d6e63;
+      color: #d7ccc8;
+      font-size: 13px;
+      font-weight: bold;
+      padding: 9px 22px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .secondary-back-btn:hover {
+      background: rgba(60, 40, 28, 0.9);
+      color: #fff;
+      border-color: #ffd54f;
+    }
+
+    /* Settings Modal Card */
+    .settings-card {
+      background: linear-gradient(180deg, rgba(28, 18, 12, 0.97) 0%, rgba(14, 8, 5, 0.99) 100%);
+      border: 2px solid #d4af37;
+      border-radius: 14px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 30px rgba(212, 175, 55, 0.35);
+      padding: 24px 30px;
+      max-width: 540px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .settings-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      background: rgba(38, 25, 18, 0.8);
+      border: 1px solid #6d4c41;
+      border-radius: 8px;
+    }
+
+    .setting-info {
+      flex: 1;
+      text-align: left;
+    }
+
+    .setting-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #ffe082;
+      margin-bottom: 2px;
+    }
+
+    .setting-desc {
+      font-size: 11px;
+      color: #b0bec5;
+      line-height: 1.3;
+    }
+
+    .setting-toggle-btn {
+      padding: 7px 16px;
+      border-radius: 18px;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      cursor: pointer;
+      border: 2px solid #8d6e63;
+      background: #263238;
+      color: #90a4ae;
+      transition: all 0.2s;
+    }
+
+    .setting-toggle-btn.active {
+      background: linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%);
+      border-color: #81c784;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(129, 199, 132, 0.6);
+    }
+
+    .setting-action-btn {
+      background: linear-gradient(180deg, rgba(60, 40, 28, 0.9) 0%, rgba(30, 20, 14, 0.95) 100%);
+      border: 1px solid #b8860b;
+      color: #ffd54f;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .setting-action-btn:hover {
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      border-color: #ffd54f;
+      color: #fff;
+    }
+
+    .setting-action-btn.primary {
+      background: linear-gradient(180deg, #f57f17 0%, #e65100 100%);
+      border-color: #ffd54f;
+      color: #fff;
+    }
+
+    /* HUD Customizer Mode Bar */
+    #hud-customizer-bar {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(180deg, rgba(28, 18, 12, 0.96) 0%, rgba(14, 8, 5, 0.98) 100%);
+      border: 2px solid #ffd54f;
+      border-radius: 28px;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      z-index: 99999;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 213, 79, 0.4);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      user-select: none;
+    }
+
+    #hud-customizer-bar.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(-20px);
+    }
+
+    .customizer-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: #e0e0e0;
+    }
+
+    .customizer-badge {
+      background: #ffd54f;
+      color: #000;
+      font-weight: 900;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .customizer-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .cust-btn {
+      padding: 6px 14px;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .cust-btn.save {
+      background: #2e7d32;
+      border: 1px solid #81c784;
+      color: #fff;
+    }
+
+    .cust-btn.save:hover { background: #388e3c; }
+
+    .cust-btn.reset {
+      background: #455a64;
+      border: 1px solid #90a4ae;
+      color: #fff;
+    }
+
+    .cust-btn.close {
+      background: #c62828;
+      border: 1px solid #ef5350;
+      color: #fff;
+    }
+
+    /* Visual indicators during HUD Customizing */
+    body.hud-editing .hud-customizable {
+      outline: 2px dashed #ffd54f !important;
+      outline-offset: 4px;
+      box-shadow: 0 0 18px rgba(255, 213, 79, 0.7) !important;
+      cursor: grab !important;
+      position: absolute !important;
+      z-index: 1000 !important;
+    }
+
+    .widget-edit-controls {
+      position: absolute;
+      top: -28px;
+      left: 0;
+      background: rgba(18, 12, 8, 0.95);
+      border: 1px solid #ffd54f;
+      border-radius: 12px;
+      padding: 2px 8px;
+      display: none;
+      align-items: center;
+      gap: 6px;
+      z-index: 1002;
+      font-size: 11px;
+      font-weight: bold;
+      color: #ffd54f;
+      white-space: nowrap;
+    }
+
+    body.hud-editing .hud-customizable .widget-edit-controls {
+      display: flex;
+    }
+
+    .widget-scale-btn {
+      background: #3e2723;
+      border: 1px solid #a68449;
+      color: #fff;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 12px;
+    }
+
+    .widget-scale-btn:hover {
+      background: #d32f2f;
+    }
+
+    /* Mobile Controls Container */
+    #mobile-controls-container {
+      display: none;
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      z-index: 50;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body.mobile-controls-active #mobile-controls-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #mobile-dpad {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      pointer-events: auto;
+      background: rgba(20, 12, 8, 0.75);
+      border: 1.5px solid #8d6e63;
+      border-radius: 36px;
+      padding: 6px 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+    }
+
+    .mobile-touch-btn {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #4a2818 0%, #1c100a 100%);
+      border: 2px solid #b8860b;
+      color: #ffe082;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7), inset 0 0 10px rgba(255, 179, 0, 0.2);
+      transition: transform 0.08s, background 0.15s, border-color 0.15s;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    .mobile-touch-btn:active, .mobile-touch-btn.active {
+      transform: scale(0.92);
+      background: radial-gradient(circle at 35% 35%, #d32f2f 0%, #5d1010 100%);
+      border-color: #ffca28;
+      box-shadow: 0 0 16px rgba(255, 202, 40, 0.8);
+      color: #fff;
+    }
+
+    .mobile-touch-btn.center-btn {
+      width: 46px;
+      height: 46px;
+      font-size: 9px;
+      border-color: #795548;
+    }
+
+    #mobile-quick-actions {
+      display: flex;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .mobile-action-btn {
+      background: linear-gradient(180deg, rgba(40, 25, 15, 0.9) 0%, rgba(20, 10, 5, 0.95) 100%);
+      border: 1.5px solid #d4af37;
+      color: #ffd54f;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      user-select: none;
+    }
+
+    .mobile-action-btn:active {
+      transform: scale(0.94);
+      background: #b71c1c;
+      border-color: #ff5252;
+      color: #fff;
+    }
+
+    /* Multiplayer Modal Card */
+    .multiplayer-card {
+      background: linear-gradient(180deg, rgba(28, 18, 12, 0.97) 0%, rgba(14, 8, 5, 0.99) 100%);
+      border: 2px solid #d4af37;
+      border-radius: 14px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 32px rgba(212, 175, 55, 0.35);
+      padding: 24px 32px;
+      max-width: 520px;
+      width: 90%;
+      text-align: center;
+    }
+
+    .mp-intro {
+      font-size: 13px;
+      color: #b0bec5;
+      margin-bottom: 18px;
+      line-height: 1.35;
+    }
+
+    .mp-tabs {
+      display: flex;
+      border-bottom: 2px solid #6d4c41;
+      margin-bottom: 18px;
+    }
+
+    .mp-tab {
+      flex: 1;
+      padding: 10px 0;
+      background: none;
+      border: none;
+      color: #b0bec5;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mp-tab.active {
+      color: #ffd54f;
+      border-bottom: 3px solid #ffd54f;
+    }
+
+    .mp-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .mp-panel.hidden {
+      display: none;
+    }
+
+    .mp-panel-desc {
+      font-size: 13px;
+      color: #d7ccc8;
+    }
+
+    .mp-action-btn {
+      padding: 12px 28px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.2s;
+      border: 2px solid #ffb300;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+    }
+
+    .mp-action-btn.primary {
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      color: #fff;
+    }
+
+    .mp-action-btn.primary:hover {
+      transform: scale(1.04);
+      box-shadow: 0 8px 24px rgba(255, 179, 0, 0.6);
+    }
+
+    .room-code-display {
+      background: #1c100a;
+      border: 2px dashed #ffd54f;
+      border-radius: 10px;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 8px 0;
+    }
+
+    .room-code-label {
+      font-size: 11px;
+      color: #b0bec5;
+      font-weight: bold;
+    }
+
+    .room-code-text {
+      font-family: 'Courier New', monospace;
+      font-size: 26px;
+      font-weight: 900;
+      color: #ffeb3b;
+      letter-spacing: 4px;
+    }
+
+    .copy-code-btn {
+      background: #4e342e;
+      border: 1px solid #ffd54f;
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: bold;
+      transition: all 0.15s;
+    }
+
+    .copy-code-btn:hover { background: #6d4c41; }
+
+    .mp-spinner-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: #ffca28;
+    }
+
+    .mp-spinner {
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 202, 40, 0.3);
+      border-top-color: #ffca28;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .join-input-group {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    #join-room-input {
+      flex: 1;
+      padding: 12px 16px;
+      background: #1c100a;
+      border: 2px solid #8d6e63;
+      border-radius: 24px;
+      color: #ffeb3b;
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-align: center;
+      outline: none;
+    }
+
+    #join-room-input:focus {
+      border-color: #ffd54f;
+      box-shadow: 0 0 12px rgba(255, 213, 79, 0.4);
+    }
+
+    .mp-status-msg {
+      font-size: 13px;
+      margin-top: 6px;
+      min-height: 20px;
+    }
+
+    .mp-status-msg.error { color: #ef5350; }
+    .mp-status-msg.success { color: #81c784; }
+    .mp-status-msg.info { color: #90caf9; }
+
+    /* In-Game P2P HUD Widget */
+    #p2p-hud-widget {
+      position: absolute;
+      top: 64px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 10;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    #p2p-hud-widget.hidden {
+      display: none;
+    }
+
+    .p2p-dot {
+      font-size: 10px;
+      animation: alertDiamondPulse 1s infinite alternate ease-in-out;
+    }
+
+    .p2p-emote-btn {
+      background: rgba(40, 20, 10, 0.8);
+      border: 1px solid #ffd54f;
+      border-radius: 4px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: transform 0.1s;
+    }
+
+    .p2p-emote-btn:hover {
+      transform: scale(1.15);
+    }
+
+    /* Difficulty Badge in Status Card */
+    #diff-badge-indicator {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 179, 0, 0.25);
+      border: 1px solid #ffb300;
+      color: #ffd54f;
+      text-transform: uppercase;
+      margin-left: 6px;
+    }
   </style>
 </head>
 <body>
   <div id="damage-vignette"></div>
   <div id="canvas-container"></div>
 
-  <!-- Audio Mute Button -->
-  <button id="mute-btn">🔊 Audio: ON</button>
+  <!-- Top Utility Tools (Audio, Settings, Multiplayer) -->
+  <div id="hud-top-right-tools">
+    <button id="mute-btn" class="hud-tool-btn">🔊 Audio: ON</button>
+    <button id="btn-settings-hud" class="hud-tool-btn">⚙️ Settings</button>
+    <button id="btn-multiplayer-hud" class="hud-tool-btn">⚔️ Multiplayer</button>
+  </div>
+
+  <!-- In-Game P2P Status & Quick Emotes -->
+  <div id="p2p-hud-widget" class="hud-panel hidden">
+    <span class="p2p-dot">🟢</span>
+    <span id="p2p-crew-status">Crew: Online</span>
+    <button id="btn-p2p-emote-ahoy" class="p2p-emote-btn" title="Send Ahoy!">☠️</button>
+    <button id="btn-p2p-emote-attack" class="p2p-emote-btn" title="Send Attack!">⚔️</button>
+    <button id="btn-p2p-emote-follow" class="p2p-emote-btn" title="Send Follow!">🌊</button>
+  </div>
+
+  <!-- HUD Customizer Drag & Resize Toolbar -->
+  <div id="hud-customizer-bar" class="hidden">
+    <div class="customizer-info">
+      <span class="customizer-badge">🎨 HUD EDIT MODE</span>
+      <span>Drag controls to move. Use <strong>[-]</strong> and <strong>[+]</strong> to resize.</span>
+    </div>
+    <div class="customizer-actions">
+      <button id="btn-custom-save" class="cust-btn save">💾 Save Layout</button>
+      <button id="btn-custom-reset" class="cust-btn reset">🔄 Reset</button>
+      <button id="btn-custom-close" class="cust-btn close">✕ Done</button>
+    </div>
+  </div>
 
   <!-- Top HUD -->
   <div id="hud-top">
     <!-- Left Column: Player Status & Enemy Status directly below -->
     <div id="hud-top-left">
       <!-- Ship Integrity & Speed -->
-      <div class="hud-panel" id="status-card">
-        <div class="status-title">Jackdaw</div>
+      <div class="hud-panel hud-customizable" id="status-card" data-widget-title="STATUS">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div class="status-title">Dead-Man-s-Wake</div>
+          <span id="diff-badge-indicator">MED</span>
+        </div>
         <div class="hp-bar-container">
           <div id="hp-fill"></div>
         </div>
@@ -886,10 +1814,23 @@
     <canvas id="minimap-canvas" width="120" height="120"></canvas>
   </div>
 
+  <!-- Mobile On-Screen Controls Container -->
+  <div id="mobile-controls-container" class="hud-customizable" data-widget-title="MOBILE DPAD">
+    <div id="mobile-dpad">
+      <button id="mbtn-steer-left" class="mobile-touch-btn" title="Steer Port (Left)">◀<span style="font-size:8.5px;">PORT</span></button>
+      <button id="mbtn-steer-center" class="mobile-touch-btn center-btn" title="Center Rudder">▲<span style="font-size:7.5px;">AHEAD</span></button>
+      <button id="mbtn-steer-right" class="mobile-touch-btn" title="Steer Starboard (Right)">▶<span style="font-size:8.5px;">STBD</span></button>
+    </div>
+    <div id="mobile-quick-actions">
+      <button id="mbtn-lock-target" class="mobile-action-btn">🎯 LOCK TARGET</button>
+      <button id="mbtn-fire-broadside" class="mobile-action-btn">💥 VOLLEY</button>
+    </div>
+  </div>
+
   <!-- Bottom HUD -->
   <div id="hud-bottom">
     <!-- Sail Lever (Speed Control) -->
-    <div class="hud-panel" id="sail-lever-panel">
+    <div class="hud-panel hud-customizable" id="sail-lever-panel" data-widget-title="SAILS">
       <div style="font-size: 11px; font-weight: bold; color: #ffb300;">SAILS</div>
       <div class="lever-track">
         <button class="sail-btn selected" id="btn-sail-2" title="Full Sail (W)">FULL</button>
@@ -902,7 +1843,7 @@
     </div>
 
     <!-- Broadside Cannons -->
-    <div id="combat-panel">
+    <div id="combat-panel" class="hud-customizable" data-widget-title="CANNONS">
       <div class="broadside-wrapper">
         <button class="broadside-btn" id="btn-fire-port">
           <!-- Circular SVG Reload Progress -->
@@ -935,7 +1876,7 @@
     </div>
 
     <!-- Interactive Ship Helm Wheel -->
-    <div id="helm-container">
+    <div id="helm-container" class="hud-customizable" data-widget-title="HELM WHEEL">
       <svg id="helm-wheel" viewBox="0 0 100 100">
         <!-- Outer Rim -->
         <circle cx="50" cy="50" r="40" fill="none" stroke="#7a4b22" stroke-width="6" />
@@ -996,25 +1937,198 @@
     </div>
   </div>
 
-  <!-- Splash / Tutorial Modal -->
+  <!-- Splash / Main Menu Modal -->
   <div id="splash-modal">
-    <h1 class="splash-title">Assassin's Creed: Pirates</h1>
-    <p class="splash-subtitle">Web Revival Prototype &bull; High Seas Naval Sandbox</p>
+    <div class="splash-card">
+      <h1 class="splash-title">Dead-Man-s-Wake</h1>
+      <p class="splash-subtitle">High Seas Naval Sandbox &bull; Caribbean Age of Sail</p>
 
-    <div class="control-grid">
-      <span class="control-key">A / D or Wheel</span>
-      <span>Turn Rudder (Port / Starboard)</span>
-      <span class="control-key">W / S</span>
-      <span>Toggle Sails (Full / Half / Furled)</span>
-      <span class="control-key">Q</span>
-      <span>Fire Port (Left) Broadside Cannons</span>
-      <span class="control-key">E</span>
-      <span>Fire Starboard (Right) Cannons</span>
-      <span class="control-key">Mouse Drag</span>
-      <span>Rotate Orbit Camera View</span>
+      <!-- Main View (3 Options) -->
+      <div id="menu-main-view">
+        <div class="main-menu-options">
+          <button id="btn-menu-set-sails" class="main-menu-btn primary-btn">
+            <span class="btn-icon">⛵</span>
+            <span class="btn-text">SET SAILS</span>
+          </button>
+
+          <button id="btn-menu-multiplayer" class="main-menu-btn secondary-btn">
+            <span class="btn-icon">⚔️</span>
+            <span class="btn-text">MULTIPLAYER (P2P)</span>
+          </button>
+
+          <div class="settings-menu-wrapper">
+            <button id="btn-menu-settings" class="main-menu-btn settings-btn">
+              <span class="btn-icon">⚙️</span>
+              <span class="btn-text">SETTINGS</span>
+            </button>
+            <div class="menu-subtext">mobile supported enable on settings</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Difficulty Selection View (Appears when "Set Sails" is pressed) -->
+      <div id="menu-difficulty-view" class="hidden">
+        <h2 class="difficulty-title">SELECT DIFFICULTY</h2>
+        <p class="difficulty-subtitle">Your chosen difficulty directly modifies cannon firepower and hull damage:</p>
+
+        <div class="difficulty-cards">
+          <!-- Easy Mode -->
+          <div class="difficulty-card easy" data-difficulty="easy">
+            <div class="diff-header">
+              <span class="diff-icon">🌊</span>
+              <span class="diff-name">EASY</span>
+              <span class="diff-badge">Calm Seas</span>
+            </div>
+            <div class="diff-stats">
+              <div class="diff-stat player">Your Damage: <strong>+50% (1.5x)</strong></div>
+              <div class="diff-stat enemy">Enemy Damage: <strong>-40% (0.6x)</strong></div>
+            </div>
+            <div class="diff-desc">Gentle swells and reinforced hull. Ideal for casual cruising, exploration, and forgiving battles.</div>
+            <button class="diff-select-btn" data-difficulty="easy">SET SAIL (EASY)</button>
+          </div>
+
+          <!-- Medium Mode -->
+          <div class="difficulty-card medium selected" data-difficulty="medium">
+            <div class="diff-header">
+              <span class="diff-icon">⚔️</span>
+              <span class="diff-name">MEDIUM</span>
+              <span class="diff-badge">Brisk Winds</span>
+            </div>
+            <div class="diff-stats">
+              <div class="diff-stat player">Your Damage: <strong>100% (1.0x)</strong></div>
+              <div class="diff-stat enemy">Enemy Damage: <strong>100% (1.0x)</strong></div>
+            </div>
+            <div class="diff-desc">Standard balanced naval warfare. Authentic Age of Sail naval combat and tactical maneuvers.</div>
+            <button class="diff-select-btn" data-difficulty="medium">SET SAIL (MEDIUM)</button>
+          </div>
+
+          <!-- Hard Mode -->
+          <div class="difficulty-card hard" data-difficulty="hard">
+            <div class="diff-header">
+              <span class="diff-icon">☠️</span>
+              <span class="diff-name">HARD</span>
+              <span class="diff-badge">Deadly Maelstrom</span>
+            </div>
+            <div class="diff-stats">
+              <div class="diff-stat player">Your Damage: <strong>-20% (0.8x)</strong></div>
+              <div class="diff-stat enemy">Enemy Damage: <strong>+50% (1.5x)</strong></div>
+            </div>
+            <div class="diff-desc">Ruthless Royal Navy broadsides. Punishing enemy damage and precision fire for seasoned sea dogs!</div>
+            <button class="diff-select-btn" data-difficulty="hard">SET SAIL (HARD)</button>
+          </div>
+        </div>
+
+        <button id="btn-difficulty-back" class="secondary-back-btn">⬅ Back to Menu</button>
+      </div>
     </div>
+  </div>
 
-    <button id="start-btn">SET SAIL</button>
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="settings-card">
+      <div class="modal-header">
+        <h2>⚙️ SHIP SETTINGS & CONTROLS</h2>
+        <button id="btn-close-settings" class="modal-close-btn" title="Close Settings">✕</button>
+      </div>
+
+      <div class="settings-content">
+        <!-- Setting 1: Mobile Mode Controls -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Mobile On-Screen Keys</div>
+            <div class="setting-desc">Enables virtual touch controls, D-pad steering, and mobile action buttons for touch devices.</div>
+          </div>
+          <button id="btn-toggle-mobile-keys" class="setting-toggle-btn">OFF</button>
+        </div>
+
+        <!-- Setting 2: Fullscreen Mode -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Fullscreen Mode</div>
+            <div class="setting-desc">Expand naval battles to full screen for maximum immersion.</div>
+          </div>
+          <button id="btn-toggle-fullscreen" class="setting-action-btn">⛶ Enter Fullscreen</button>
+        </div>
+
+        <!-- Setting 3: HUD Customization -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">On-Screen Control Customization</div>
+            <div class="setting-desc">Drag buttons to any position on screen and adjust their scale with [-] and [+] handles.</div>
+          </div>
+          <button id="btn-open-customizer" class="setting-action-btn primary">🎨 Customize Controls</button>
+        </div>
+
+        <!-- Setting 4: Audio Toggle -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Maritime Audio & SFX</div>
+            <div class="setting-desc">Realistic ocean waves, cannon volleys, and orchestral naval soundtrack.</div>
+          </div>
+          <button id="btn-settings-audio" class="setting-action-btn">🔊 Audio: ON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multiplayer P2P Modal -->
+  <div id="multiplayer-modal" class="modal-overlay hidden">
+    <div class="multiplayer-card">
+      <div class="modal-header">
+        <h2>⚔️ MULTIPLAYER P2P (HOST & JOIN)</h2>
+        <button id="btn-close-multiplayer" class="modal-close-btn" title="Close">✕</button>
+      </div>
+
+      <p class="mp-intro">Connect peer-to-peer with another captain via WebRTC. Real-time ship sailing, synchronized broadside volleys, and PvP/Co-op battles!</p>
+
+      <div class="mp-tabs">
+        <button id="tab-host" class="mp-tab active">⚓ HOST FLEET</button>
+        <button id="tab-join" class="mp-tab">⛵ JOIN FLEET</button>
+      </div>
+
+      <!-- Host Panel -->
+      <div id="mp-host-panel" class="mp-panel">
+        <p class="mp-panel-desc">Create a room and share the 5-letter code with your friend:</p>
+
+        <div id="mp-host-idle">
+          <button id="btn-create-host" class="mp-action-btn primary">⚓ CREATE FLEET ROOM</button>
+        </div>
+
+        <div id="mp-host-active" class="hidden">
+          <div class="room-code-display">
+            <div>
+              <div class="room-code-label">YOUR ROOM CODE:</div>
+              <div id="host-code-val" class="room-code-text">-----</div>
+            </div>
+            <button id="btn-copy-code" class="copy-code-btn" title="Copy code to clipboard">📋 Copy</button>
+          </div>
+          <div class="mp-spinner-row">
+            <div class="mp-spinner"></div>
+            <span id="mp-host-status">Waiting for crewmate to join...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Join Panel -->
+      <div id="mp-join-panel" class="mp-panel hidden">
+        <p class="mp-panel-desc">Enter the Room Code provided by the host captain:</p>
+        <div class="join-input-group">
+          <input type="text" id="join-room-input" placeholder="CODE" maxlength="8" autocomplete="off" />
+          <button id="btn-submit-join" class="mp-action-btn primary">JOIN</button>
+        </div>
+        <div id="mp-join-status" class="mp-status-msg info"></div>
+      </div>
+
+      <!-- Connected State Banner -->
+      <div id="mp-connected-panel" class="mp-panel hidden">
+        <div class="mp-connected-box" style="padding: 16px; background: rgba(46, 125, 50, 0.25); border: 1.5px solid #4caf50; border-radius: 12px; margin-top: 10px;">
+          <div style="font-size:32px;">🎉</div>
+          <div style="font-size:18px;font-weight:bold;color:#ffeb3b;margin:6px 0;">CREWMATE CONNECTED!</div>
+          <p style="font-size:12px;color:#c8e6c9;margin-bottom:12px;">WebRTC P2P DataChannel established successfully.</p>
+          <button id="btn-start-multiplayer-game" class="mp-action-btn primary">SET SAIL TOGETHER ⛵</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script type="module">

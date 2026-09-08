@@ -8,9 +8,16 @@ export class CollisionSystem {
     this.combat = combatSystem;
     this.onCameraShake = callbacks.onCameraShake || null;
     this.onPlayerDamage = callbacks.onPlayerDamage || null;
+    this.playerDamageMultiplier = 1.0;
+    this.enemyDamageMultiplier = 1.0;
 
     // Cooldown trackers to avoid multi-frame damage spam (key -> cooldown remaining)
     this.cooldowns = new Map();
+  }
+
+  setDifficultyMultipliers(playerMult = 1.0, enemyMult = 1.0) {
+    this.playerDamageMultiplier = playerMult;
+    this.enemyDamageMultiplier = enemyMult;
   }
 
   update(delta, playerShip, enemies) {
@@ -196,17 +203,17 @@ export class CollisionSystem {
           // PLAYER RAMS ENEMY SHIP WITH BOW (Front Ramming Attack!)
           // ========================================================
           // Massive ramming strike dealt to enemy ship (28 to 75 damage!)
-          const enemyRamDmg = Math.round(28 + playerSpeed * 2.7);
+          const enemyRamDmg = Math.round((28 + playerSpeed * 2.7) * (this.playerDamageMultiplier || 1.0));
 
-          // Front impact collision damage also taken by Jackdaw (as requested)
-          const playerRecoilDmg = Math.round(9 + playerSpeed * 0.85);
+          // Front impact collision damage also taken by Dead-Man-s-Wake (as requested)
+          const playerRecoilDmg = Math.round((9 + playerSpeed * 0.85) * (this.enemyDamageMultiplier || 1.0));
 
           enemyShip.takeDamage(enemyRamDmg);
           playerShip.takeDamage(playerRecoilDmg);
 
           // Impact physics: rebound player slightly and disrupt enemy velocity
           playerShip.speed = -Math.min(3.2, playerSpeed * 0.32);
-          enemyShip.speed = Math.max(0, enemyShip.speed * 0.35);
+          enemyShip.speed = Math.max(0, enemySpeed * 0.35);
 
           // Spurt wood splinters, debris and water surge
           this.combat.spawnSplinterExplosion(contactPos);
@@ -224,8 +231,8 @@ export class CollisionSystem {
           // ========================================================
           // ENEMY RAMS PLAYER FROM FRONT
           // ========================================================
-          const playerDamage = Math.round(24 + enemySpeed * 2.0);
-          const enemyDamage = Math.round(11 + enemySpeed * 0.8);
+          const playerDamage = Math.round((24 + enemySpeed * 2.0) * (this.enemyDamageMultiplier || 1.0));
+          const enemyDamage = Math.round((11 + enemySpeed * 0.8) * (this.playerDamageMultiplier || 1.0));
 
           playerShip.takeDamage(playerDamage);
           enemyShip.takeDamage(enemyDamage);
@@ -248,9 +255,10 @@ export class CollisionSystem {
           // ========================================================
           const relSpeed = Math.max(playerSpeed, enemySpeed);
           if (relSpeed > 1.4) {
-            const sideDmg = Math.round(10 + relSpeed * 1.1);
-            playerShip.takeDamage(sideDmg);
-            enemyShip.takeDamage(sideDmg);
+            const sidePlayerDmg = Math.round((10 + relSpeed * 1.1) * (this.enemyDamageMultiplier || 1.0));
+            const sideEnemyDmg = Math.round((10 + relSpeed * 1.1) * (this.playerDamageMultiplier || 1.0));
+            playerShip.takeDamage(sidePlayerDmg);
+            enemyShip.takeDamage(sideEnemyDmg);
 
             this.combat.spawnSplinterExplosion(contactPos);
             this.combat.spawnWaterSplash(contactPos);
