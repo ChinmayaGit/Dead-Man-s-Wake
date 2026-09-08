@@ -209,4 +209,27 @@ export class SoundController {
       osc.stop(now + 1.2);
     });
   }
+
+  // Cannon reload complete sound (metallic latch click)
+  playReloadReady() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    [0, 0.08].forEach((offset, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(idx === 0 ? 950 : 1350, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(idx === 0 ? 500 : 700, now + offset + 0.05);
+
+      gain.gain.setValueAtTime(0.18, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.05);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.05);
+    });
+  }
 }

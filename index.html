@@ -273,50 +273,141 @@
     /* Broadside Combat Buttons */
     #combat-panel {
       display: flex;
-      gap: 20px;
+      gap: 22px;
       pointer-events: auto;
     }
 
+    .broadside-wrapper {
+      position: relative;
+      width: 86px;
+      height: 86px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
     .broadside-btn {
-      background: linear-gradient(180deg, #441717 0%, #200a0a 100%);
-      border: 2px solid #c97941;
+      background: radial-gradient(circle at 35% 35%, #4a1717 0%, #1a0808 100%);
+      border: 2px solid #b86e35;
       border-radius: 50%;
-      width: 82px;
-      height: 82px;
+      width: 86px;
+      height: 86px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       color: #ffecd1;
-      font-size: 12px;
-      font-weight: bold;
-      text-transform: uppercase;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), inset 0 0 12px rgba(255, 100, 50, 0.3);
-      transition: transform 0.1s ease, border-color 0.2s ease;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), inset 0 0 14px rgba(255, 100, 50, 0.25);
+      transition: transform 0.1s ease, border-color 0.2s ease, filter 0.2s ease;
       position: relative;
+      padding: 0;
+      overflow: visible;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
-    .broadside-btn:active {
-      transform: scale(0.92);
-      border-color: #ff9800;
+    .broadside-btn:hover:not(.reloading) {
+      transform: scale(1.05);
+      border-color: #ffd54f;
+      box-shadow: 0 8px 24px rgba(255, 152, 0, 0.4), inset 0 0 16px rgba(255, 180, 50, 0.4);
+    }
+
+    .broadside-btn:active:not(.reloading) {
+      transform: scale(0.94);
+    }
+
+    .broadside-btn.reloading {
+      cursor: not-allowed;
+      filter: brightness(0.72) saturate(0.8);
+      border-color: #4a2713;
+    }
+
+    .btn-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      pointer-events: none;
+      line-height: 1.15;
+    }
+
+    .btn-label {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #ffecd1;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    }
+
+    .reload-timer {
+      font-size: 13px;
+      font-weight: 900;
+      font-family: 'Courier New', monospace, sans-serif;
+      color: #81c784;
+      margin: 2px 0;
+      text-shadow: 0 0 8px rgba(129, 199, 132, 0.8);
+      transition: color 0.2s ease;
+      letter-spacing: 0.5px;
+    }
+
+    .broadside-btn.reloading .reload-timer {
+      color: #ffca28;
+      text-shadow: 0 0 10px rgba(255, 202, 40, 0.9);
     }
 
     .broadside-btn .key-hint {
       font-size: 10px;
       color: #d19a66;
-      margin-top: 4px;
+      font-weight: bold;
     }
 
-    .cooldown-ring {
+    /* Circular SVG Timer Ring */
+    .cooldown-svg {
       position: absolute;
-      top: -4px;
-      left: -4px;
-      width: 86px;
-      height: 86px;
-      border-radius: 50%;
-      border: 3px solid rgba(255, 152, 0, 0.3);
+      top: -2px;
+      left: -2px;
+      width: 90px;
+      height: 90px;
       pointer-events: none;
+      z-index: 1;
+      overflow: visible;
+    }
+
+    .cooldown-track {
+      fill: none;
+      stroke: rgba(10, 5, 2, 0.6);
+      stroke-width: 5;
+    }
+
+    .cooldown-progress {
+      fill: none;
+      stroke: #ffd54f;
+      stroke-width: 5;
+      stroke-linecap: round;
+      stroke-dasharray: 282.74;
+      stroke-dashoffset: 0;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+      transition: stroke-dashoffset 0.05s linear, stroke 0.2s ease;
+      filter: drop-shadow(0 0 5px rgba(255, 213, 79, 0.8));
+    }
+
+    .broadside-btn.reloading .cooldown-progress {
+      stroke: #ff9800;
+      filter: drop-shadow(0 0 5px rgba(255, 152, 0, 0.9));
+    }
+
+    /* Flash pulse when reload completes */
+    @keyframes reloadReadyPulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 213, 79, 0.9); }
+      50% { transform: scale(1.1); box-shadow: 0 0 24px 8px rgba(255, 213, 79, 0.95); }
+      100% { transform: scale(1); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8); }
+    }
+
+    .reload-ready-anim {
+      animation: reloadReadyPulse 0.45s ease-out;
     }
 
     /* Helm Wheel */
@@ -487,17 +578,35 @@
 
     <!-- Broadside Cannons -->
     <div id="combat-panel">
-      <button class="broadside-btn" id="btn-fire-port">
-        PORT
-        <span class="key-hint">[ Q ]</span>
-        <div class="cooldown-ring" id="cd-port"></div>
-      </button>
+      <div class="broadside-wrapper">
+        <button class="broadside-btn" id="btn-fire-port">
+          <!-- Circular SVG Reload Progress -->
+          <svg class="cooldown-svg" viewBox="0 0 100 100">
+            <circle class="cooldown-track" cx="50" cy="50" r="45" />
+            <circle class="cooldown-progress" id="ring-port" cx="50" cy="50" r="45" />
+          </svg>
+          <div class="btn-content">
+            <span class="btn-label">PORT</span>
+            <span class="reload-timer" id="timer-port">READY</span>
+            <span class="key-hint">[ Q ]</span>
+          </div>
+        </button>
+      </div>
 
-      <button class="broadside-btn" id="btn-fire-starboard">
-        STBD
-        <span class="key-hint">[ E ]</span>
-        <div class="cooldown-ring" id="cd-starboard"></div>
-      </button>
+      <div class="broadside-wrapper">
+        <button class="broadside-btn" id="btn-fire-starboard">
+          <!-- Circular SVG Reload Progress -->
+          <svg class="cooldown-svg" viewBox="0 0 100 100">
+            <circle class="cooldown-track" cx="50" cy="50" r="45" />
+            <circle class="cooldown-progress" id="ring-starboard" cx="50" cy="50" r="45" />
+          </svg>
+          <div class="btn-content">
+            <span class="btn-label">STBD</span>
+            <span class="reload-timer" id="timer-starboard">READY</span>
+            <span class="key-hint">[ E ]</span>
+          </div>
+        </button>
+      </div>
     </div>
 
     <!-- Interactive Ship Helm Wheel -->

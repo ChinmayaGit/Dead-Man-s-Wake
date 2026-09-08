@@ -6,6 +6,13 @@ import { EnemyShip } from './enemy.js';
 import { Archipelago } from './islands.js';
 import { SoundController } from './audio.js';
 
+// Camera Chase and Zoom Presets based on Sail State (authentic to AC Pirates)
+export const SAIL_CAMERA_PRESETS = {
+  0: { distance: 28.0, height: 6.5, fov: 54, lookHeight: 3.2 },  // Furled (Stop): intimate close-up view behind the stern (kept as it is)
+  1: { distance: 46.0, height: 10.0, fov: 58, lookHeight: 3.8 },  // Half Sail: zoomed out a little more for tactical maneuvering
+  2: { distance: 74.0, height: 16.0, fov: 65, lookHeight: 4.8 }   // Full Sail: complete panoramic zoom out to see the high seas
+};
+
 class Game {
   constructor() {
     this.container = document.getElementById('canvas-container');
@@ -19,6 +26,7 @@ class Game {
 
     // Cooldowns
     this.cooldowns = { port: 0, starboard: 0 };
+    this.prevCooldowns = { port: 0, starboard: 0 };
     this.maxCooldown = 3.5;
     this.isFirstFrame = true;
 
@@ -42,7 +50,7 @@ class Game {
     this.scene.fog = new THREE.Fog(0x9bd7f5, 120, 800);
 
     this.camera = new THREE.PerspectiveCamera(
-      55,
+      54,
       window.innerWidth / window.innerHeight,
       0.5,
       2000
@@ -59,10 +67,13 @@ class Game {
     this.renderer.toneMappingExposure = 1.2;
     this.container.appendChild(this.renderer.domElement);
 
-    // 3rd Person Camera Chase Config
+    // 3rd Person Camera Chase Config with Sail Zoom Support
     this.camOrbit = {
-      distance: 30,
-      height: 7.0,
+      distance: 28.0,
+      height: 6.5,
+      fov: 54,
+      lookHeight: 3.2,
+      userZoom: 0,
       angleH: 0,
       angleV: 0.18,
       targetPos: new THREE.Vector3()
@@ -137,7 +148,7 @@ class Game {
           splashModal.classList.add('hidden');
           this.sound.init();
         }
-        this.changeSail(2); // Immediately drop Full Sail!
+        this.changeSail(Math.min(2, this.playerShip.sailState + 1));
       } else if (key === 's' || key === 'arrowdown') {
         this.changeSail(Math.max(0, this.playerShip.sailState - 1));
       } else if (key === 'q') {
@@ -180,7 +191,7 @@ class Game {
 
     window.addEventListener('mouseup', () => { isDragging = false; });
     window.addEventListener('wheel', (e) => {
-      this.camOrbit.distance = Math.max(18, Math.min(80, this.camOrbit.distance + e.deltaY * 0.04));
+      this.camOrbit.userZoom = Math.max(-15, Math.min(30, (this.camOrbit.userZoom || 0) + e.deltaY * 0.04));
     });
   }
 
@@ -306,6 +317,18 @@ class Game {
   fireBroadside(side) {
     if (this.cooldowns[side] > 0) return;
     this.cooldowns[side] = this.maxCooldown;
+    this.prevCooldowns[side] = this.maxCooldown;
+
+    const ring = document.getElementById(`ring-${side}`);
+    const timer = document.getElementById(`timer-${side}`);
+    const btn = document.getElementById(`btn-fire-${side}`);
+    if (ring) ring.style.strokeDashoffset = 282.74;
+    if (timer) timer.textContent = this.maxCooldown.toFixed(1) + 's';
+    if (btn) {
+      btn.classList.remove('reload-ready-anim');
+      btn.classList.add('reloading');
+    }
+
     this.combat.fireBroadside(this.playerShip, this.enemyShip.ship, side);
   }
 
@@ -315,6 +338,33 @@ class Game {
 
     // Safety checks against any NaN
     if (isNaN(shipPos.x) || isNaN(shipPos.z) || isNaN(shipHeave)) return;
+
+    // Retrieve target preset based on current sail state (Furled = 0, Half = 1, Full = 2)
+    const preset = SAIL_CAMERA_PRESETS[this.playerShip.sailState] || SAIL_CAMERA_PRESETS[0];
+    const targetDist = Math.max(18, Math.min(110, preset.distance + (this.camOrbit.userZoom || 0)));
+    const targetHeight = preset.height;
+    const targetFov = preset.fov;
+    const targetLookHeight = preset.lookHeight;
+
+    if (immediate) {
+      this.camOrbit.distance = targetDist;
+      this.camOrbit.height = targetHeight;
+      this.camOrbit.fov = targetFov;
+      this.camOrbit.lookHeight = targetLookHeight;
+    } else {
+      // Smooth, cinematic interpolation between sail zoom states
+      const zoomLerp = Math.min(delta * 2.6, 0.14);
+      this.camOrbit.distance = THREE.MathUtils.lerp(this.camOrbit.distance, targetDist, zoomLerp);
+      this.camOrbit.height = THREE.MathUtils.lerp(this.camOrbit.height, targetHeight, zoomLerp);
+      this.camOrbit.fov = THREE.MathUtils.lerp(this.camOrbit.fov, targetFov, zoomLerp);
+      this.camOrbit.lookHeight = THREE.MathUtils.lerp(this.camOrbit.lookHeight || 3.2, targetLookHeight, zoomLerp);
+    }
+
+    // Dynamic FOV update
+    if (Math.abs(this.camera.fov - this.camOrbit.fov) > 0.02) {
+      this.camera.fov = this.camOrbit.fov;
+      this.camera.updateProjectionMatrix();
+    }
 
     // Camera angle is controlled ONLY by mouse drag, decoupled from ship steering
     const camAngle = Math.PI + this.camOrbit.angleH;
@@ -328,10 +378,10 @@ class Game {
       shipPos.z - Math.cos(camAngle) * horizDist
     );
 
-    // Look directly at ship center
+    // Look directly at ship center + dynamic lookHeight
     const desiredLookTarget = new THREE.Vector3(
       shipPos.x,
-      shipHeave + 3.2,
+      shipHeave + (this.camOrbit.lookHeight || 3.2),
       shipPos.z
     );
 
@@ -411,16 +461,44 @@ class Game {
       }
     }
 
-    // Cooldowns
+    // Cooldowns & Round Reload Timers
+    const ringCircumference = 282.74; // 2 * Math.PI * 45
     ['port', 'starboard'].forEach((side) => {
-      if (this.cooldowns[side] > 0) {
-        this.cooldowns[side] = Math.max(0, this.cooldowns[side] - delta);
-        const ring = document.getElementById(`cd-${side}`);
-        if (ring) {
-          const progress = this.cooldowns[side] / this.maxCooldown;
-          ring.style.borderColor = `rgba(255, 87, 34, ${0.4 + progress * 0.6})`;
+      const prevCd = this.prevCooldowns[side];
+      const curCd = this.cooldowns[side];
+
+      if (curCd > 0) {
+        this.cooldowns[side] = Math.max(0, curCd - delta);
+      }
+
+      const newCd = this.cooldowns[side];
+      const ring = document.getElementById(`ring-${side}`);
+      const timer = document.getElementById(`timer-${side}`);
+      const btn = document.getElementById(`btn-fire-${side}`);
+
+      if (newCd > 0) {
+        const progress = Math.min(1, Math.max(0, (this.maxCooldown - newCd) / this.maxCooldown));
+        const offset = ringCircumference * (1 - progress);
+        if (ring) ring.style.strokeDashoffset = offset;
+        if (timer) timer.textContent = newCd.toFixed(1) + 's';
+        if (btn) btn.classList.add('reloading');
+      } else {
+        if (ring) ring.style.strokeDashoffset = '0';
+        if (timer) timer.textContent = 'READY';
+        if (btn) {
+          btn.classList.remove('reloading');
+          if (prevCd > 0) {
+            btn.classList.remove('reload-ready-anim');
+            void btn.offsetWidth;
+            btn.classList.add('reload-ready-anim');
+            if (this.sound && this.sound.playReloadReady) {
+              this.sound.playReloadReady();
+            }
+          }
         }
       }
+
+      this.prevCooldowns[side] = newCd;
     });
 
     // Music
