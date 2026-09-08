@@ -9,7 +9,8 @@ export class CombatSystem {
     this.cannonballs = [];
     this.particles = [];
     this.flashes = [];
-
+    this.damageNumbers = [];
+    this.onShipHit = null;
 
     // Cannonball material & geometry
     this.ballGeo = new THREE.SphereGeometry(0.26, 8, 8);
@@ -155,9 +156,10 @@ export class CombatSystem {
     const minSpread = 0.055; // narrow focused salvo
     const spreadAngle = THREE.MathUtils.lerp(maxSpread, minSpread, chargeClamped);
 
-    // Launch Ballistics Parameters
+    // Launch Ballistics Parameters: Low elevation (~9.2 deg) keeps trajectory close to water level
+    // ensuring cannonballs slice directly through hulls & rigging along the entire firing line!
     const gravity = 18.0;
-    const alpha = 0.26; // Launch elevation angle ~15 degrees
+    const alpha = 0.16; // Authentic low naval elevation (~9.2 deg)
     const cosA = Math.cos(alpha);
     const sinA = Math.sin(alpha);
     const y0 = 2.0;
@@ -169,18 +171,30 @@ export class CombatSystem {
     const shipCenter = playerShip.position;
     const heave = (typeof playerShip.heave === 'number' && !isNaN(playerShip.heave)) ? playerShip.heave : 0;
 
-    // Check if an enemy ship is in the impact area (Lock-on target feedback)
+    // Check if ANY enemy ship is on the yellow line or within the broadside sector
     let isTargetLocked = false;
+    let lockedEnemy = null;
+    let closestLockedDist = Infinity;
+
     const activeEnemies = Array.isArray(enemies) ? enemies : (enemies ? [enemies] : []);
     for (const enemy of activeEnemies) {
       if (enemy && enemy.ship && !enemy.ship.isSinking) {
         const toEnemy = enemy.ship.position.clone().sub(shipCenter);
-        const dist = toEnemy.length();
-        const latDot = toEnemy.clone().normalize().dot(broadsideDir);
-        const angleDiff = Math.acos(THREE.MathUtils.clamp(latDot, -1, 1));
-        if (angleDiff <= spreadAngle * 1.35 && Math.abs(dist - range) < 20.0) {
+        // Distance along the broadside firing direction
+        const lateralDist = toEnemy.dot(broadsideDir);
+        // Distance perpendicular to broadside firing direction (along ship forward axis)
+        const forwardOffset = Math.abs(toEnemy.dot(forward));
+
+        // Effective sector half-width at distance lateralDist
+        const sectorHalfWidth = Math.max(4.2, lateralDist * Math.tan(spreadAngle) + 4.2);
+
+        // Check if enemy intersects yellow line / sector anywhere between 4m and range + 8m
+        if (lateralDist >= 4.0 && lateralDist <= range + 8.0 && forwardOffset <= sectorHalfWidth + 5.5) {
           isTargetLocked = true;
-          break;
+          if (lateralDist < closestLockedDist) {
+            closestLockedDist = lateralDist;
+            lockedEnemy = enemy;
+          }
         }
       }
     }
@@ -280,8 +294,15 @@ export class CombatSystem {
     rightPosAttr.needsUpdate = true;
 
     // 4. Update Impact Reticle Marker on the Water
-    const centerImpactX = shipCenter.x + broadsideDir.x * range;
-    const centerImpactZ = shipCenter.z + broadsideDir.z * range;
+    // If an enemy is on the yellow line, reticle highlights that enemy; otherwise marks the end circle!
+    let centerImpactX, centerImpactZ;
+    if (lockedEnemy) {
+      centerImpactX = lockedEnemy.ship.position.x;
+      centerImpactZ = lockedEnemy.ship.position.z;
+    } else {
+      centerImpactX = shipCenter.x + broadsideDir.x * range;
+      centerImpactZ = shipCenter.z + broadsideDir.z * range;
+    }
     const centerImpactY = this.ocean.getWaveHeight(centerImpactX, centerImpactZ) + 0.18;
     this.aimReticle.position.set(centerImpactX, centerImpactY, centerImpactZ);
 
@@ -289,6 +310,8 @@ export class CombatSystem {
     this.aimReticle.scale.set(pulse, pulse, pulse);
 
     this.aimGroup.visible = true;
+
+    return { isTargetLocked, lockedEnemy, closestLockedDist };
   }
 
   hideAimSector() {
@@ -313,13 +336,13 @@ export class CombatSystem {
 
     const chargeClamped = Math.max(0, Math.min(1.0, charge));
 
-    // Range & exact ballistic speed matching the yellow target area
+    // Dynamic Range: 45m (quick tap) up to 145m (fully charged hold)
     const minRange = 45.0;
     const maxRange = 145.0;
     const range = THREE.MathUtils.lerp(minRange, maxRange, chargeClamped);
 
     const gravity = 18.0;
-    const alpha = 0.26;
+    const alpha = 0.16; // Low, authentic naval trajectory (~9.2 deg)
     const cosA = Math.cos(alpha);
     const sinA = Math.sin(alpha);
     const y0 = 2.0;
@@ -327,24 +350,24 @@ export class CombatSystem {
 
     // Spread narrows from 0.08 rad down to 0.014 rad as charge increases
     const spreadMax = THREE.MathUtils.lerp(0.08, 0.014, chargeClamped);
-    const damagePerBall = 20 + Math.round(chargeClamped * 7); // 20 to 27 damage per ball
 
     this.sound.playCannonBlast();
 
+    const fireOrigin = firingShip.position.clone();
+
     muzzlePositions.forEach((origin, index) => {
-      // Stagger cannon shots slightly for realistic volley sound & visual
       setTimeout(() => {
         if (!firingShip.group.parent) return;
 
         // Narrowing spread matches the yellow transparent area
         const spread = (Math.random() - 0.5) * 2.0 * spreadMax;
-        const elevation = alpha + (Math.random() - 0.5) * 0.02;
+        const elevation = alpha + (Math.random() - 0.5) * 0.015;
 
         const ballDir = broadsideDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), spread);
         ballDir.y = elevation;
         ballDir.normalize();
 
-        const speed = baseMuzzleSpeed + (Math.random() - 0.5) * 2.0;
+        const speed = baseMuzzleSpeed + (Math.random() - 0.5) * 1.5;
         const velocity = ballDir.multiplyScalar(speed);
 
         // Spawn ball mesh
@@ -356,17 +379,148 @@ export class CombatSystem {
           mesh,
           velocity,
           firingShip,
+          firingOrigin: fireOrigin.clone(),
           targetShip,
           alive: true,
           age: 0,
           charge: chargeClamped,
-          damage: damagePerBall
+          prevPos: origin.clone()
         });
 
         // Muzzle smoke and flash
         this.spawnMuzzleFlash(origin);
         this.spawnSmoke(origin, broadsideDir);
       }, index * 85);
+    });
+  }
+
+  // Floating 3D Damage Indicator: Shows "-58 POINT BLANK!" / "-38 CLOSE HIT" / "-18"
+  spawnDamageNumber(pos, amount, hitDist) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const isPointBlank = hitDist <= 32;
+    const isClose = hitDist <= 58;
+
+    ctx.clearRect(0, 0, 256, 128);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    if (isPointBlank) {
+      // Golden glowing point blank critical
+      ctx.shadowColor = 'rgba(255, 109, 0, 0.95)';
+      ctx.shadowBlur = 18;
+      ctx.font = '900 52px Impact, sans-serif';
+      ctx.fillStyle = '#ffea00';
+      ctx.fillText(`-${amount}`, 128, 46);
+
+      ctx.shadowColor = 'rgba(255, 23, 68, 0.95)';
+      ctx.shadowBlur = 10;
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillStyle = '#ff3d00';
+      ctx.fillText('POINT BLANK!', 128, 96);
+    } else if (isClose) {
+      ctx.shadowColor = 'rgba(213, 0, 0, 0.9)';
+      ctx.shadowBlur = 14;
+      ctx.font = '900 48px Impact, sans-serif';
+      ctx.fillStyle = '#ff5252';
+      ctx.fillText(`-${amount}`, 128, 52);
+
+      ctx.shadowColor = 'rgba(255, 23, 68, 0.8)';
+      ctx.shadowBlur = 8;
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillStyle = '#ff8a80';
+      ctx.fillText('CLOSE HIT', 128, 96);
+    } else {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+      ctx.shadowBlur = 10;
+      ctx.font = '900 44px Impact, sans-serif';
+      ctx.fillStyle = '#ff7043';
+      ctx.fillText(`-${amount}`, 128, 64);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+      depthTest: false
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos).add(new THREE.Vector3(
+      (Math.random() - 0.5) * 1.5,
+      3.2 + Math.random() * 1.2,
+      (Math.random() - 0.5) * 1.5
+    ));
+    const scale = isPointBlank ? 13 : (isClose ? 11 : 8.5);
+    sprite.scale.set(scale, scale * 0.5, 1);
+    this.scene.add(sprite);
+
+    this.damageNumbers.push({
+      sprite,
+      texture,
+      mat,
+      life: 0,
+      maxLife: 1.25,
+      vy: 4.8
+    });
+  }
+
+  // Floating 3D Reward Notification: e.g. "+50 HP REPAIRED!" or "+350 GOLD LOOTED!"
+  spawnFloatingReward(pos, text, subtext, color = '#69f0ae') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 340;
+    canvas.height = 140;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, 340, 140);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18;
+    ctx.font = '900 46px Impact, sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(text, 170, 48);
+
+    if (subtext) {
+      ctx.shadowBlur = 10;
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(subtext, 170, 96);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+      depthTest: false
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos).add(new THREE.Vector3(0, 5.2, 0));
+    sprite.scale.set(16, 6.5, 1);
+    this.scene.add(sprite);
+
+    this.damageNumbers.push({
+      sprite,
+      texture,
+      mat,
+      life: 0,
+      maxLife: 2.2,
+      vy: 3.6
     });
   }
 
@@ -474,34 +628,79 @@ export class CombatSystem {
       b.age += delta;
 
       // Ballistic physics
+      const prevPos = b.mesh.position.clone();
       b.mesh.position.addScaledVector(b.velocity, delta);
       b.velocity.y -= gravity * delta;
+      const currPos = b.mesh.position;
 
-      const waveH = this.ocean.getWaveHeight(b.mesh.position.x, b.mesh.position.z);
+      const waveH = this.ocean.getWaveHeight(currPos.x, currPos.z);
 
-      // Check collision with Target Ship(s)
+      // Check collision with Target Ship(s) along the line of fire
       const targets = Array.isArray(b.targetShip) ? b.targetShip : (b.targetShip ? [b.targetShip] : []);
       let hit = false;
+
       for (let t = 0; t < targets.length; t++) {
         const tShip = targets[t];
-        if (tShip && !tShip.isSinking) {
-          const dist = b.mesh.position.distanceTo(tShip.position);
-          if (dist < 7.4 && b.mesh.position.y > waveH - 1.2 && b.mesh.position.y < waveH + 6.5) {
-            // Hit Target!
-            this.spawnSplinterExplosion(b.mesh.position);
-            tShip.takeDamage(b.damage || 20);
+        if (!tShip || tShip.isSinking || tShip === b.firingShip) continue;
+
+        const shipPos = tShip.position;
+        const shipWaveH = this.ocean.getWaveHeight(shipPos.x, shipPos.z);
+        const shipFwd = tShip.getForwardVector();
+        const shipRight = tShip.getRightVector();
+
+        // Continuous Collision Detection: test current position and midpoint of segment
+        const testPositions = [currPos, prevPos.clone().add(currPos).multiplyScalar(0.5)];
+
+        for (const testPos of testPositions) {
+          const rel = testPos.clone().sub(shipPos);
+          const localFwd = rel.dot(shipFwd);
+          const localLat = rel.dot(shipRight);
+          const localVert = testPos.y - shipWaveH;
+
+          const inOrientedBox = Math.abs(localFwd) <= 9.2 && Math.abs(localLat) <= 4.6 && localVert >= -1.5 && localVert <= 16.5;
+          const horizontalDist = Math.sqrt(rel.x * rel.x + rel.z * rel.z);
+          const inCylinder = horizontalDist <= 7.5 && localVert >= -1.5 && localVert <= 16.5;
+
+          if (inOrientedBox || inCylinder) {
+            // DIRECT HIT on ship along the yellow line / trajectory!
+            const fireOrigin = b.firingOrigin || (b.firingShip ? b.firingShip.position : shipPos);
+            const hitDist = currPos.distanceTo(fireOrigin);
+
+            // "MORE NEAR MORE DAMAGE" - Balanced Naval Combat:
+            // Point-blank range (<=12m) deals 1.75x damage (~22 to 28 dmg per ball)
+            // Mid-range (60m) deals 1.0x damage (~13 to 16 dmg per ball)
+            // Maximum range (145m) deals 0.65x damage (~8 to 11 dmg per ball)
+            const minProximityDist = 12.0;
+            const maxProximityDist = 145.0;
+            const proximity = 1.0 - THREE.MathUtils.clamp((hitDist - minProximityDist) / (maxProximityDist - minProximityDist), 0.0, 1.0);
+            const proximityMultiplier = THREE.MathUtils.lerp(0.65, 1.75, proximity);
+
+            const isPlayerFiring = (b.firingShip && b.firingShip.isPlayer);
+            const baseBallDamage = isPlayerFiring ? 12 : 9;
+            const chargeBonus = Math.round((b.charge || 0) * 4);
+            const finalDamage = Math.max(6, Math.round((baseBallDamage + chargeBonus) * proximityMultiplier));
+
+            tShip.takeDamage(finalDamage);
+            this.spawnSplinterExplosion(currPos);
+            this.spawnDamageNumber(currPos, finalDamage, hitDist);
+
+            if (this.onShipHit) {
+              this.onShipHit(tShip, finalDamage, hitDist);
+            }
+
             this.scene.remove(b.mesh);
             this.cannonballs.splice(i, 1);
             hit = true;
             break;
           }
         }
+        if (hit) break;
       }
       if (hit) continue;
 
       // Check water splash
-      if (b.mesh.position.y <= waveH) {
-        const splashPos = b.mesh.position.clone();
+      if (currPos.y <= waveH) {
+        const splashPos = currPos.clone();
         splashPos.y = waveH;
         this.spawnWaterSplash(splashPos);
         this.scene.remove(b.mesh);
@@ -553,6 +752,23 @@ export class CombatSystem {
       if (f.life <= 0) {
         this.scene.remove(f.light);
         this.flashes.splice(i, 1);
+      }
+    }
+
+    // 4. Update Floating 3D Damage Numbers
+    for (let i = this.damageNumbers.length - 1; i >= 0; i--) {
+      const d = this.damageNumbers[i];
+      d.life += delta;
+      d.sprite.position.y += d.vy * delta;
+      d.vy *= 0.93;
+      const progress = d.life / d.maxLife;
+      d.mat.opacity = Math.max(0, 1.0 - progress);
+
+      if (d.life >= d.maxLife) {
+        this.scene.remove(d.sprite);
+        d.texture.dispose();
+        d.mat.dispose();
+        this.damageNumbers.splice(i, 1);
       }
     }
   }

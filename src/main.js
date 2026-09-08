@@ -42,6 +42,12 @@ class Game {
       maxChargeTime: 1.35
     };
 
+    // Sunk Enemy Salvage & Loot System
+    this.playerGold = 0;
+    this.activeSalvageEnemy = null;
+    this.salvageQueue = [];
+    this.floatingCrates = [];
+
     this.initScene();
     this.initLights();
     this.initGameObjects();
@@ -124,12 +130,30 @@ class Game {
 
     // Combat System
     this.combat = new CombatSystem(this.scene, this.ocean, this.sound);
+    this.combat.onShipHit = (hitShip, damage, hitDist) => {
+      const hitEnemy = this.enemies.find(e => e.ship === hitShip);
+      if (hitEnemy) {
+        if (!this.lockedEnemy || this.lockedEnemy.ship.isSinking) {
+          this.lockedEnemy = hitEnemy;
+          this.lockedEnemy.isAlerted = true;
+          this.lockedEnemy.isLockedTarget = true;
+          this.lockedEnemy.standoff = false;
+        }
+      } else if (hitShip === this.playerShip) {
+        // Player ship hit by enemy cannon fire!
+        this.triggerCameraShake(0.7, 0.35);
+        this.triggerDamageFeedback(damage);
+        if (this.sound && this.sound.playHullImpact) {
+          this.sound.playHullImpact();
+        }
+      }
+    };
 
-    // Royal Navy Enemies stationed across the archipelago
+    // Royal Navy Enemies stationed across the archipelago (Tiered Toughness & Authentic Warship Health)
     this.enemies = [
-      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(45, 0, -55), 'HMS Defiance'),
-      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(-120, 0, -20), 'HMS Vanguard'),
-      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(80, 0, 95), 'HMS Intrepid')
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(45, 0, -55), 'HMS Defiance', 280, 'Frigate'),
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(-120, 0, -20), 'HMS Vanguard', 380, 'Heavy Frigate'),
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(80, 0, 95), 'HMS Intrepid', 500, 'Flagship')
     ];
     this.enemyShip = this.enemies[0]; // backwards compatibility
     this.lockedEnemy = null;
@@ -216,6 +240,20 @@ class Game {
 
       if (key === 'arrowleft') this.keys.a = true;
       if (key === 'arrowright') this.keys.d = true;
+
+      // Salvage / Loot Modal shortcuts
+      if (this.activeSalvageEnemy) {
+        if (key === '1' || key === 'r') {
+          e.preventDefault();
+          this.handleSalvageChoice('recovery');
+          return;
+        }
+        if (key === '2' || key === 'l') {
+          e.preventDefault();
+          this.handleSalvageChoice('loot');
+          return;
+        }
+      }
 
       if (key === ' ' || key === 'enter') {
         const splashModal = document.getElementById('splash-modal');
@@ -431,6 +469,20 @@ class Game {
     if (this.minimapCanvas) {
       this.minimapCtx = this.minimapCanvas.getContext('2d');
     }
+
+    // Salvage & Loot Modal Buttons
+    const salvageRecoveryBtn = document.getElementById('btn-salvage-recovery');
+    const salvageLootBtn = document.getElementById('btn-salvage-loot');
+    if (salvageRecoveryBtn) {
+      salvageRecoveryBtn.addEventListener('click', () => {
+        this.handleSalvageChoice('recovery');
+      });
+    }
+    if (salvageLootBtn) {
+      salvageLootBtn.addEventListener('click', () => {
+        this.handleSalvageChoice('loot');
+      });
+    }
   }
 
   changeSail(newState) {
@@ -470,7 +522,7 @@ class Game {
       btn.classList.add('reloading');
     }
 
-    const targetShips = this.lockedEnemy ? this.lockedEnemy.ship : this.enemies.map(e => e.ship);
+    const targetShips = this.enemies.map(e => e.ship);
     this.combat.fireBroadside(this.playerShip, targetShips, side, charge);
   }
 
@@ -694,15 +746,17 @@ class Game {
     if (enemyCard) {
       if (this.lockedEnemy && !this.lockedEnemy.ship.isSinking) {
         enemyCard.classList.add('visible');
-        if (enemyNameEl) enemyNameEl.textContent = this.lockedEnemy.name;
+        if (enemyNameEl) enemyNameEl.textContent = `${this.lockedEnemy.name} • ${this.lockedEnemy.shipClass || 'Frigate'}`;
         if (enemyDistEl) {
           const dist = Math.round(this.playerShip.position.distanceTo(this.lockedEnemy.ship.position));
           enemyDistEl.textContent = dist;
         }
         if (enemyHpValEl && enemyHpFillEl) {
-          const hpPct = Math.max(0, this.lockedEnemy.ship.health / this.lockedEnemy.ship.maxHealth);
+          const curHp = Math.max(0, Math.round(this.lockedEnemy.ship.health));
+          const maxHp = this.lockedEnemy.ship.maxHealth;
+          const hpPct = Math.max(0, this.lockedEnemy.ship.health / maxHp);
           enemyHpFillEl.style.width = `${hpPct * 100}%`;
-          enemyHpValEl.textContent = Math.round(this.lockedEnemy.ship.health);
+          enemyHpValEl.textContent = `${curHp}/${maxHp} (${Math.round(hpPct * 100)}%)`;
         }
         if (enemyBadgeEl) {
           enemyBadgeEl.textContent = 'ALERTED';
@@ -815,8 +869,134 @@ class Game {
     ctx.restore();
   }
 
+  // Trigger interactive Salvage / Loot choice when an enemy warship is sunk
+  triggerSalvagePrompt(enemy) {
+    if (!enemy) return;
+    if (this.activeSalvageEnemy) {
+      this.salvageQueue.push(enemy);
+      return;
+    }
+
+    this.activeSalvageEnemy = enemy;
+    const modal = document.getElementById('salvage-modal');
+    const title = document.getElementById('salvage-enemy-title');
+    if (title) {
+      title.textContent = `${enemy.name || 'Enemy Warship'} Sunk!`;
+    }
+    if (modal) {
+      modal.classList.remove('hidden');
+    }
+
+    if (this.sound && this.sound.playBell) {
+      this.sound.playBell();
+    }
+  }
+
+  // Handle player's choice: 'recovery' (+50 HP repair) or 'loot' (+350 Gold doubloons)
+  handleSalvageChoice(choice) {
+    const enemy = this.activeSalvageEnemy;
+    if (!enemy) return;
+
+    const modal = document.getElementById('salvage-modal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+
+    const enemyPos = (enemy.ship && enemy.ship.position) ? enemy.ship.position.clone() : this.playerShip.position.clone();
+
+    if (choice === 'recovery') {
+      // 1. Help Recovery: restore +50 HP to player ship
+      const healAmount = 50;
+      this.playerShip.health = Math.min(this.playerShip.maxHealth, this.playerShip.health + healAmount);
+      if (this.sound && this.sound.playShipRepair) {
+        this.sound.playShipRepair();
+      }
+      this.combat.spawnFloatingReward(this.playerShip.position, '+50 HP', 'REPAIRED!', '#00e676');
+
+      // Visual pulse on player health status card
+      const hpCard = document.getElementById('status-card');
+      if (hpCard) {
+        hpCard.style.boxShadow = '0 0 25px #00e676, inset 0 0 15px rgba(0, 230, 118, 0.4)';
+        setTimeout(() => {
+          hpCard.style.boxShadow = '';
+        }, 1000);
+      }
+    } else if (choice === 'loot') {
+      // 2. Loot Cargo: award +350 Gold doubloons
+      const goldAmount = 350;
+      this.playerGold += goldAmount;
+      if (this.sound && this.sound.playCoinLoot) {
+        this.sound.playCoinLoot();
+      }
+      this.combat.spawnFloatingReward(this.playerShip.position, '+350 GOLD', 'PLUNDERED!', '#ffd700');
+
+      // Update Gold HUD counter & trigger flash animation
+      const goldEl = document.getElementById('gold-val');
+      if (goldEl) {
+        goldEl.textContent = this.playerGold;
+        goldEl.classList.remove('gold-flash');
+        void goldEl.offsetWidth; // trigger reflow
+        goldEl.classList.add('gold-flash');
+      }
+    }
+
+    // Spawn floating wooden wreckage crates and rum barrels bobbing at enemy sinking site
+    this.spawnWreckageDebris(enemyPos);
+
+    this.activeSalvageEnemy = null;
+
+    // If another enemy warship sunk during this interaction, prompt it after brief pause
+    if (this.salvageQueue && this.salvageQueue.length > 0) {
+      const nextEnemy = this.salvageQueue.shift();
+      setTimeout(() => {
+        this.triggerSalvagePrompt(nextEnemy);
+      }, 450);
+    }
+  }
+
+  spawnWreckageDebris(pos) {
+    const crateGeo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+    const crateMat = new THREE.MeshStandardMaterial({
+      color: 0x8d6e63,
+      roughness: 0.85
+    });
+
+    const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.25, 8);
+    const barrelMat = new THREE.MeshStandardMaterial({
+      color: 0x5d4037,
+      roughness: 0.8
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const isBarrel = (i % 2 === 1);
+      const mesh = new THREE.Mesh(isBarrel ? barrelGeo : crateGeo, isBarrel ? barrelMat : crateMat);
+      const offsetX = (Math.random() - 0.5) * 16;
+      const offsetZ = (Math.random() - 0.5) * 16;
+      mesh.position.set(pos.x + offsetX, 0, pos.z + offsetZ);
+      mesh.rotation.set(Math.random() * 0.4, Math.random() * Math.PI, Math.random() * 0.4);
+      this.scene.add(mesh);
+
+      this.floatingCrates.push({
+        mesh,
+        originX: mesh.position.x,
+        originZ: mesh.position.z,
+        rotSpeed: (Math.random() - 0.5) * 0.8,
+        life: 0,
+        maxLife: 30.0
+      });
+    }
+  }
+
   updateEnemies(delta) {
     const playerPos = this.playerShip.position;
+
+    // 0. Check for newly sunken enemy ships to trigger Salvage & Plunder choice
+    for (const enemy of this.enemies) {
+      if (enemy && enemy.ship && enemy.ship.isSinking && !enemy.hasPromptedSalvage) {
+        enemy.hasPromptedSalvage = true;
+        this.triggerSalvagePrompt(enemy);
+      }
+    }
 
     // 1. Check if currently locked enemy is sunken or has fled far away
     if (this.lockedEnemy) {
@@ -893,7 +1073,21 @@ class Game {
       } else {
         this.broadsideCharge.chargeTime += delta;
         const charge = Math.min(1.0, this.broadsideCharge.chargeTime / this.broadsideCharge.maxChargeTime);
-        this.combat.updateAimSector(this.playerShip, side, charge, this.enemies);
+        const aimResult = this.combat.updateAimSector(this.playerShip, side, charge, this.enemies);
+
+        // If an enemy comes on the yellow line, lock onto it so HUD health bar tracks it!
+        if (aimResult && aimResult.lockedEnemy) {
+          const enemyOnLine = aimResult.lockedEnemy;
+          if (this.lockedEnemy !== enemyOnLine) {
+            if (this.lockedEnemy) {
+              this.lockedEnemy.isLockedTarget = false;
+            }
+            this.lockedEnemy = enemyOnLine;
+            this.lockedEnemy.isAlerted = true;
+            this.lockedEnemy.isLockedTarget = true;
+            this.lockedEnemy.standoff = false;
+          }
+        }
 
         const ring = document.getElementById(`ring-${side}`);
         const timer = document.getElementById(`timer-${side}`);
@@ -904,7 +1098,12 @@ class Game {
           ring.style.strokeDashoffset = ringCircumference * (1 - charge);
         }
         if (timer) {
-          timer.textContent = `${currentRange}m${charge >= 0.99 ? ' MAX' : ''}`;
+          if (aimResult && aimResult.lockedEnemy) {
+            const enemyDist = Math.round(aimResult.closestLockedDist);
+            timer.textContent = `${enemyDist}m LOCKED`;
+          } else {
+            timer.textContent = `${currentRange}m${charge >= 0.99 ? ' MAX' : ''}`;
+          }
         }
       }
     }
@@ -915,6 +1114,27 @@ class Game {
     this.updateEnemies(delta);
     this.collision.update(delta, this.playerShip, this.enemies);
     this.combat.update(delta);
+
+    // Update floating wreckage crates bobbing on ocean waves
+    if (this.floatingCrates && this.floatingCrates.length > 0) {
+      for (let i = this.floatingCrates.length - 1; i >= 0; i--) {
+        const crate = this.floatingCrates[i];
+        crate.life += delta;
+        if (crate.life >= crate.maxLife) {
+          this.scene.remove(crate.mesh);
+          crate.mesh.geometry.dispose();
+          this.floatingCrates.splice(i, 1);
+        } else {
+          const waveY = this.ocean.getWaveHeight(crate.originX, crate.originZ);
+          crate.mesh.position.y = waveY + 0.25;
+          crate.mesh.rotation.y += crate.rotSpeed * delta;
+          if (crate.life > crate.maxLife - 3) {
+            const fade = (crate.maxLife - crate.life) / 3;
+            crate.mesh.scale.setScalar(Math.max(0.01, fade));
+          }
+        }
+      }
+    }
 
     // 3. Camera & HUD
     if (this.isFirstFrame) {
@@ -943,14 +1163,15 @@ function bootGame() {
         window.__gameInstance.sound.init();
       }
     }
-    if (window.location.search.includes('testAim')) {
+    if (window.location.search.includes('testSalvage')) {
       setTimeout(() => {
-        console.log('🎯 [TEST] Initiating Aim Charge on Starboard...');
-        window.__gameInstance.startBroadsideCharge('starboard');
-        setTimeout(() => {
-          console.log('🎯 [TEST] Holding charge at 70%... Aim Sector visible:', window.__gameInstance.combat.aimGroup.visible);
-        }, 800);
-      }, 1500);
+        if (window.game && window.game.enemies && window.game.enemies[0]) {
+          const enemy = window.game.enemies[0];
+          window.game.playerShip.health = 50;
+          enemy.ship.takeDamage(100);
+          console.log('🧪 [TEST] Enemy HMS Defiance sunk for salvage test!');
+        }
+      }, 1200);
     }
   }
 }

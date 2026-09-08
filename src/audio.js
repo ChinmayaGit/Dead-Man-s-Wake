@@ -278,4 +278,69 @@ export class SoundController {
     noise.start(now);
     noise.stop(now + 0.65);
   }
+
+  // Cascading gold coins jingling sound effect
+  playCoinLoot() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    const coinPitches = [1650, 2200, 1850, 2600, 3100, 3700];
+    coinPitches.forEach((pitch, i) => {
+      const startTime = now + i * 0.055;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(pitch, startTime);
+      osc.frequency.exponentialRampToValueAtTime(pitch * 0.92, startTime + 0.18);
+
+      gain.gain.setValueAtTime(0.18, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.22);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + 0.22);
+    });
+  }
+
+  // Timber repair hammering & restoration chime
+  playShipRepair() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // 3 rhythmic hammer impacts on wood
+    [0, 0.14, 0.28].forEach((timeOffset, idx) => {
+      const strikeTime = now + timeOffset;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320 - idx * 25, strikeTime);
+      osc.frequency.exponentialRampToValueAtTime(80, strikeTime + 0.08);
+
+      gain.gain.setValueAtTime(0.35, strikeTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, strikeTime + 0.1);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(strikeTime);
+      osc.stop(strikeTime + 0.1);
+    });
+
+    // Uplifting harmonic healing chime
+    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+      const chimeTime = now + 0.35 + i * 0.08;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.15, chimeTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, chimeTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(chimeTime);
+      osc.stop(chimeTime + 0.45);
+    });
+  }
 }

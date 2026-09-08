@@ -54,7 +54,7 @@ export const SPEED_PRESETS = [
 ];
 
 export class Ship {
-  constructor(scene, ocean, isPlayer = true, modelName = 'ship-pirate-large.glb') {
+  constructor(scene, ocean, isPlayer = true, modelName = 'ship-pirate-large.glb', maxHealth = 100) {
     this.scene = scene;
     this.ocean = ocean;
     this.isPlayer = isPlayer;
@@ -70,8 +70,8 @@ export class Ship {
     this.targetRudder = 0;
     this.currentAngularVelocity = 0; // rad/s
     this.targetAngularVelocity = 0;
-    this.maxHealth = 100;
-    this.health = 100;
+    this.maxHealth = maxHealth;
+    this.health = maxHealth;
     this.isSinking = false;
     this.sinkProgress = 0;
 

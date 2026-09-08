@@ -2,14 +2,15 @@ import * as THREE from 'three';
 import { Ship } from './ship.js';
 
 export class EnemyShip {
-  constructor(scene, ocean, combatSystem, initialPos, name = 'HMS Defiance') {
+  constructor(scene, ocean, combatSystem, initialPos, name = 'HMS Defiance', maxHealth = 280, shipClass = 'Frigate') {
     this.scene = scene;
     this.ocean = ocean;
     this.combat = combatSystem;
     this.name = name;
+    this.shipClass = shipClass;
 
-    // Load Royal Navy Frigate 3D GLB model
-    this.ship = new Ship(scene, ocean, false, 'ship-large.glb');
+    // Load Royal Navy Frigate 3D GLB model with authentic naval warship health pool
+    this.ship = new Ship(scene, ocean, false, 'ship-large.glb', maxHealth);
     this.ship.position.copy(initialPos);
     this.ship.heading = Math.PI * 0.75;
     this.ship.setSailState(1);
@@ -19,10 +20,11 @@ export class EnemyShip {
     this.isAlerted = false;
     this.isLockedTarget = false;
     this.standoff = false;
-    this.fireCooldown = 3.5 + Math.random() * 2.0;
+    this.fireCooldown = 3.2 + Math.random() * 2.0;
     this.targetPlayer = null;
     this.patrolCenter = initialPos.clone();
     this.patrolAngle = Math.random() * Math.PI * 2;
+    this.tacticalSide = (Math.random() > 0.5) ? 1 : -1;
 
     // 3D Threat Diamond Billboard Sprite floating above the mast
     this.threatSprite = this.createThreatDiamondSprite();
@@ -58,81 +60,65 @@ export class EnemyShip {
 
     const ctx = this.diamondCtx;
     if (!ctx) return;
+
     ctx.clearRect(0, 0, 128, 128);
 
     const cx = 64;
     const cy = 64;
-    const r = 40;
+    const size = 36;
+
+    let fillGrad = ctx.createLinearGradient(cx - size, cy - size, cx + size, cy + size);
+    let strokeColor = '#ffffff';
+    let glowColor = 'rgba(255, 23, 68, 0.85)';
 
     if (alerted) {
-      // 1. Vibrant Crimson Alert Diamond with Golden Rim
-      ctx.shadowColor = '#ff1744';
-      ctx.shadowBlur = 16;
-
-      // Outer diamond
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r);
-      ctx.lineTo(cx + r, cy);
-      ctx.lineTo(cx, cy + r);
-      ctx.lineTo(cx - r, cy);
-      ctx.closePath();
-      ctx.fillStyle = '#b71c1c';
-      ctx.fill();
-
-      // Inner glowing diamond
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      const ir = r * 0.78;
-      ctx.moveTo(cx, cy - ir);
-      ctx.lineTo(cx + ir, cy);
-      ctx.lineTo(cx, cy + ir);
-      ctx.lineTo(cx - ir, cy);
-      ctx.closePath();
-      ctx.fillStyle = '#ff1744';
-      ctx.fill();
-
-      // Golden border
-      ctx.lineWidth = 3.5;
-      ctx.strokeStyle = '#ffd54f';
-      ctx.stroke();
-
-      // Threat Exclamation Symbol
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '900 36px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('!', cx, cy + 1);
+      fillGrad.addColorStop(0, '#ff1744');
+      fillGrad.addColorStop(0.5, '#d50000');
+      fillGrad.addColorStop(1, '#880e4f');
+      strokeColor = '#ffffff';
+      glowColor = 'rgba(255, 23, 68, 0.95)';
     } else if (standoff) {
-      // 2. Standoff Mode (Subtle Dim Steel Grey - Backing off)
-      ctx.beginPath();
-      const ir = r * 0.65;
-      ctx.moveTo(cx, cy - ir);
-      ctx.lineTo(cx + ir, cy);
-      ctx.lineTo(cx, cy + ir);
-      ctx.lineTo(cx - ir, cy);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(60, 60, 60, 0.65)';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#90a4ae';
-      ctx.stroke();
+      fillGrad.addColorStop(0, '#ffa726');
+      fillGrad.addColorStop(0.5, '#f57c00');
+      fillGrad.addColorStop(1, '#e65100');
+      strokeColor = '#fff3e0';
+      glowColor = 'rgba(255, 167, 38, 0.7)';
     } else {
-      // 3. Patrol Mode (Warm Amber Diamond)
-      ctx.beginPath();
-      const ir = r * 0.68;
-      ctx.moveTo(cx, cy - ir);
-      ctx.lineTo(cx + ir, cy);
-      ctx.lineTo(cx, cy + ir);
-      ctx.lineTo(cx - ir, cy);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(180, 110, 10, 0.45)';
-      ctx.fill();
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = '#ffb300';
-      ctx.stroke();
+      fillGrad.addColorStop(0, '#ffca28');
+      fillGrad.addColorStop(0.5, '#ffb300');
+      fillGrad.addColorStop(1, '#ff8f00');
+      strokeColor = '#ffffff';
+      glowColor = 'rgba(255, 179, 0, 0.6)';
     }
 
-    if (this.diamondTexture) this.diamondTexture.needsUpdate = true;
+    ctx.save();
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 14;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - size);
+    ctx.lineTo(cx + size * 0.72, cy);
+    ctx.lineTo(cx, cy + size);
+    ctx.lineTo(cx - size * 0.72, cy);
+    ctx.closePath();
+
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = strokeColor;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+
+    ctx.restore();
+
+    if (this.diamondTexture) {
+      this.diamondTexture.needsUpdate = true;
+    }
   }
 
   update(delta, wind, playerShip) {
@@ -186,24 +172,41 @@ export class EnemyShip {
     } else if (this.isLockedTarget) {
       // ACTIVE ENGAGED COMBAT TARGET
       this.isAlerted = true;
+      const hpPct = this.ship.health / this.ship.maxHealth;
 
-      if (dist > 48) {
+      if (dist > 70) {
+        // Intercept and chase player at Full Sail
         this.state = 'ENGAGE';
-        this.ship.setSailState(2); // Full sail to pursue and intercept
+        this.ship.setSailState(2);
         const targetAngle = Math.atan2(-toPlayer.x, -toPlayer.z);
         this.steerTowards(targetAngle, delta);
-      } else {
-        this.state = 'BROADSIDE';
-        this.ship.setSailState(1); // Half sail for tighter combat maneuvering
 
-        // Broadside angle perpendicular to player
+        // Long-range harassing fire if player is in line-of-fire
+        if (this.fireCooldown <= 0 && dist < 115) {
+          this.fireAtPlayer(playerShip);
+          this.fireCooldown = (hpPct < 0.45 ? 2.8 : 3.8) + Math.random() * 1.5;
+        }
+      } else {
+        // Close-quarters tactical maneuvering
+        this.state = 'BROADSIDE';
+        // If heavily damaged, enemy accelerates to maintain ramming threat or evasive speed
+        this.ship.setSailState(hpPct < 0.45 ? 2 : 1);
+
+        const right = this.ship.getRightVector();
+        const toPlayerNorm = toPlayer.clone().normalize();
+        const sideDot = right.dot(toPlayerNorm);
+
+        // Turn towards the side offering easiest broadside bearing
+        const preferredOffset = (sideDot >= 0 ? 1 : -1) * (Math.PI * 0.46);
         const angleToPlayer = Math.atan2(-toPlayer.x, -toPlayer.z);
-        const broadsideAngle = angleToPlayer + Math.PI * 0.5;
+        const broadsideAngle = angleToPlayer + preferredOffset;
+
         this.steerTowards(broadsideAngle, delta);
 
-        if (this.fireCooldown <= 0 && dist < 65) {
+        if (this.fireCooldown <= 0 && dist < 115) {
           this.fireAtPlayer(playerShip);
-          this.fireCooldown = 4.2 + Math.random() * 2.0;
+          const baseCooldown = (hpPct < 0.45 ? 2.5 : 3.4);
+          this.fireCooldown = baseCooldown + Math.random() * 1.6;
         }
       }
     } else {
@@ -230,15 +233,20 @@ export class EnemyShip {
     while (diff < -Math.PI) diff += Math.PI * 2;
     while (diff > Math.PI) diff -= Math.PI * 2;
 
-    const steer = -Math.max(-1.0, Math.min(1.0, diff * 1.5));
-    this.ship.rudder = THREE.MathUtils.lerp(this.ship.rudder, steer, delta * 3.0);
+    const steer = -Math.max(-1.0, Math.min(1.0, diff * 1.6));
+    this.ship.rudder = THREE.MathUtils.lerp(this.ship.rudder, steer, delta * 3.2);
   }
 
   fireAtPlayer(playerShip) {
     const right = this.ship.getRightVector();
-    const toPlayer = playerShip.position.clone().sub(this.ship.position).normalize();
+    const toPlayer = playerShip.position.clone().sub(this.ship.position);
+    const dist = toPlayer.length();
+    const toPlayerNorm = toPlayer.clone().normalize();
 
-    const side = right.dot(toPlayer) > 0 ? 'starboard' : 'port';
-    this.combat.fireBroadside(this.ship, playerShip, side);
+    const side = right.dot(toPlayerNorm) > 0 ? 'starboard' : 'port';
+
+    // Ballistic charge calculation so enemy cannonballs accurately reach player across 40m - 120m!
+    const charge = THREE.MathUtils.clamp((dist - 35) / 95, 0.08, 1.0);
+    this.combat.fireBroadside(this.ship, playerShip, side, charge);
   }
 }
