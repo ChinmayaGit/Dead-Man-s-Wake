@@ -254,18 +254,25 @@ export class CombatSystem {
 
       const waveH = this.ocean.getWaveHeight(b.mesh.position.x, b.mesh.position.z);
 
-      // Check collision with Target Ship Hull
-      if (b.targetShip && !b.targetShip.isSinking) {
-        const dist = b.mesh.position.distanceTo(b.targetShip.position);
-        if (dist < 6.8 && b.mesh.position.y > waveH - 1.0 && b.mesh.position.y < waveH + 6.0) {
-          // Hit Target!
-          this.spawnSplinterExplosion(b.mesh.position);
-          b.targetShip.takeDamage(20);
-          this.scene.remove(b.mesh);
-          this.cannonballs.splice(i, 1);
-          continue;
+      // Check collision with Target Ship(s)
+      const targets = Array.isArray(b.targetShip) ? b.targetShip : (b.targetShip ? [b.targetShip] : []);
+      let hit = false;
+      for (let t = 0; t < targets.length; t++) {
+        const tShip = targets[t];
+        if (tShip && !tShip.isSinking) {
+          const dist = b.mesh.position.distanceTo(tShip.position);
+          if (dist < 6.8 && b.mesh.position.y > waveH - 1.0 && b.mesh.position.y < waveH + 6.0) {
+            // Hit Target!
+            this.spawnSplinterExplosion(b.mesh.position);
+            tShip.takeDamage(20);
+            this.scene.remove(b.mesh);
+            this.cannonballs.splice(i, 1);
+            hit = true;
+            break;
+          }
         }
       }
+      if (hit) continue;
 
       // Check water splash
       if (b.mesh.position.y <= waveH) {

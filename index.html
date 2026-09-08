@@ -111,12 +111,85 @@
       pointer-events: auto;
     }
 
+    /* Top-Left HUD Column */
+    #hud-top-left {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 220px;
+    }
+
     /* Ship Status */
     #status-card {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      min-width: 210px;
+      min-width: 220px;
+    }
+
+    /* Enemy Target Health Bar (Directly below player card) */
+    #enemy-status-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 220px;
+      background: linear-gradient(180deg, rgba(38, 12, 12, 0.92) 0%, rgba(18, 5, 5, 0.96) 100%);
+      border: 2px solid #b71c1c;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), inset 0 0 12px rgba(255, 23, 68, 0.25);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px);
+    }
+
+    #enemy-status-card.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .enemy-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .enemy-title-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .enemy-alert-diamond {
+      color: #ff1744;
+      font-size: 15px;
+      display: inline-block;
+      animation: alertDiamondPulse 0.8s infinite alternate ease-in-out;
+      filter: drop-shadow(0 0 6px rgba(255, 23, 68, 0.9));
+    }
+
+    @keyframes alertDiamondPulse {
+      0% { transform: scale(0.85); opacity: 0.75; }
+      100% { transform: scale(1.25); opacity: 1.0; filter: drop-shadow(0 0 10px rgba(255, 23, 68, 1)); }
+    }
+
+    .enemy-badge {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(183, 28, 28, 0.85);
+      color: #ffcdd2;
+      border: 1px solid #ff5252;
+      text-transform: uppercase;
+    }
+
+    .enemy-badge.sinking {
+      background: rgba(55, 71, 79, 0.85);
+      color: #cfd8dc;
+      border-color: #78909c;
     }
 
     .status-title {
@@ -136,11 +209,24 @@
       overflow: hidden;
     }
 
+    .enemy-hp-container {
+      border-color: #8b0000;
+      background: #1c0505;
+    }
+
     #hp-fill {
       width: 100%;
       height: 100%;
       background: linear-gradient(90deg, #2e7d32, #4caf50);
       transition: width 0.3s ease;
+    }
+
+    #enemy-hp-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #c62828, #ff1744);
+      box-shadow: 0 0 8px rgba(255, 23, 68, 0.6);
+      transition: width 0.25s ease;
     }
 
     .stats-row {
@@ -533,15 +619,36 @@
 
   <!-- Top HUD -->
   <div id="hud-top">
-    <!-- Ship Integrity & Speed -->
-    <div class="hud-panel" id="status-card">
-      <div class="status-title">Jackdaw</div>
-      <div class="hp-bar-container">
-        <div id="hp-fill"></div>
+    <!-- Left Column: Player Status & Enemy Status directly below -->
+    <div id="hud-top-left">
+      <!-- Ship Integrity & Speed -->
+      <div class="hud-panel" id="status-card">
+        <div class="status-title">Jackdaw</div>
+        <div class="hp-bar-container">
+          <div id="hp-fill"></div>
+        </div>
+        <div class="stats-row">
+          <span>Speed: <strong id="speed-val">0.0</strong> kts</span>
+          <span>Hull: <strong id="hp-val">100</strong>%</span>
+        </div>
       </div>
-      <div class="stats-row">
-        <span>Speed: <strong id="speed-val">0.0</strong> kts</span>
-        <span>Hull: <strong id="hp-val">100</strong>%</span>
+
+      <!-- Enemy Target Health Bar (Directly below player card) -->
+      <div class="hud-panel" id="enemy-status-card">
+        <div class="enemy-header">
+          <div class="enemy-title-row">
+            <span class="enemy-alert-diamond" id="enemy-diamond-icon">◆</span>
+            <span class="status-title" id="enemy-ship-name" style="color: #ffcdd2;">HMS Defiance</span>
+          </div>
+          <span class="enemy-badge" id="enemy-badge-val">ALERTED</span>
+        </div>
+        <div class="hp-bar-container enemy-hp-container">
+          <div id="enemy-hp-fill"></div>
+        </div>
+        <div class="stats-row">
+          <span>Range: <strong id="enemy-dist-val">0</strong>m</span>
+          <span>Hull: <strong id="enemy-hp-val">100</strong>%</span>
+        </div>
       </div>
     </div>
 

@@ -113,13 +113,16 @@ class Game {
     // Combat System
     this.combat = new CombatSystem(this.scene, this.ocean, this.sound);
 
-    // Enemy Frigate positioned 55 units forward-right (clearly visible on start!)
-    this.enemyShip = new EnemyShip(
-      this.scene,
-      this.ocean,
-      this.combat,
-      new THREE.Vector3(42, 0, -50)
-    );
+    // Royal Navy Enemies stationed across the archipelago
+    this.enemies = [
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(45, 0, -55), 'HMS Defiance'),
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(-120, 0, -20), 'HMS Vanguard'),
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(80, 0, 95), 'HMS Intrepid')
+    ];
+    this.enemyShip = this.enemies[0]; // backwards compatibility
+    this.lockedEnemy = null;
+    this.camLastUserDrag = 0;
+    this.isMouseDragging = false;
   }
 
   initControls() {
@@ -174,8 +177,10 @@ class Game {
     window.addEventListener('mousedown', (e) => {
       if (e.target.closest('#hud-top') || e.target.closest('#hud-bottom') || e.target.closest('#mute-btn')) return;
       isDragging = true;
+      this.isMouseDragging = true;
       prevMouseX = e.clientX;
       prevMouseY = e.clientY;
+      this.camLastUserDrag = performance.now();
     });
 
     window.addEventListener('mousemove', (e) => {
@@ -187,9 +192,14 @@ class Game {
 
       this.camOrbit.angleH -= dx * 0.006;
       this.camOrbit.angleV = Math.max(0.06, Math.min(0.68, this.camOrbit.angleV + dy * 0.004));
+      this.camLastUserDrag = performance.now();
     });
 
-    window.addEventListener('mouseup', () => { isDragging = false; });
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+      this.isMouseDragging = false;
+      this.camLastUserDrag = performance.now();
+    });
     window.addEventListener('wheel', (e) => {
       this.camOrbit.userZoom = Math.max(-15, Math.min(30, (this.camOrbit.userZoom || 0) + e.deltaY * 0.04));
     });
@@ -329,7 +339,8 @@ class Game {
       btn.classList.add('reloading');
     }
 
-    this.combat.fireBroadside(this.playerShip, this.enemyShip.ship, side);
+    const targetShips = this.lockedEnemy ? this.lockedEnemy.ship : this.enemies.map(e => e.ship);
+    this.combat.fireBroadside(this.playerShip, targetShips, side);
   }
 
   updateCamera(delta, immediate = false) {
@@ -366,7 +377,43 @@ class Game {
       this.camera.updateProjectionMatrix();
     }
 
-    // Camera angle is controlled ONLY by mouse drag, decoupled from ship steering
+    // Auto-Lock Camera Tracking when an Enemy is Alerted
+    const activeEnemy = (this.lockedEnemy && !this.lockedEnemy.ship.isSinking) ? this.lockedEnemy : null;
+    let desiredLookTarget;
+
+    if (activeEnemy) {
+      const toEnemy = activeEnemy.ship.position.clone().sub(shipPos);
+      const enemyDist = Math.max(1, toEnemy.length());
+      const enemyBearing = Math.atan2(toEnemy.x, -toEnemy.z);
+
+      // Check if user is actively dragging or recently released mouse
+      const isUserDragging = this.isMouseDragging || (performance.now() - this.camLastUserDrag < 700);
+
+      if (!isUserDragging) {
+        // Shortest-arc angular difference between current angle and enemy bearing
+        let angleDiff = enemyBearing - this.camOrbit.angleH;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+        const lockSpeed = Math.min(delta * 3.2, 0.12);
+        this.camOrbit.angleH += angleDiff * lockSpeed;
+
+        // Settle vertical pitch toward an optimal naval broadside view angle (~0.22 rad)
+        this.camOrbit.angleV = THREE.MathUtils.lerp(this.camOrbit.angleV, 0.22, Math.min(delta * 2.0, 0.06));
+      }
+
+      // Blend camera look target slightly toward enemy for dramatic framing of both ships
+      const blend = Math.min(0.24, 12.0 / Math.max(20, enemyDist));
+      desiredLookTarget = shipPos.clone().lerp(activeEnemy.ship.position, blend);
+      desiredLookTarget.y = shipHeave + (this.camOrbit.lookHeight || 3.2);
+    } else {
+      desiredLookTarget = new THREE.Vector3(
+        shipPos.x,
+        shipHeave + (this.camOrbit.lookHeight || 3.2),
+        shipPos.z
+      );
+    }
+
     const camAngle = Math.PI + this.camOrbit.angleH;
     const dist = this.camOrbit.distance;
     const height = dist * Math.sin(this.camOrbit.angleV) + this.camOrbit.height;
@@ -376,13 +423,6 @@ class Game {
       shipPos.x + Math.sin(camAngle) * horizDist,
       shipHeave + height,
       shipPos.z - Math.cos(camAngle) * horizDist
-    );
-
-    // Look directly at ship center + dynamic lookHeight
-    const desiredLookTarget = new THREE.Vector3(
-      shipPos.x,
-      shipHeave + (this.camOrbit.lookHeight || 3.2),
-      shipPos.z
     );
 
     if (!this.camLookTarget) {
@@ -501,9 +541,47 @@ class Game {
       this.prevCooldowns[side] = newCd;
     });
 
-    // Music
-    const distToEnemy = this.playerShip.position.distanceTo(this.enemyShip.ship.position);
-    this.sound.setCombatMode(distToEnemy < 100 && !this.enemyShip.ship.isSinking);
+    // Enemy Target Health Bar & Alert Indicator
+    const enemyCard = document.getElementById('enemy-status-card');
+    const enemyNameEl = document.getElementById('enemy-ship-name');
+    const enemyDistEl = document.getElementById('enemy-dist-val');
+    const enemyHpValEl = document.getElementById('enemy-hp-val');
+    const enemyHpFillEl = document.getElementById('enemy-hp-fill');
+    const enemyBadgeEl = document.getElementById('enemy-badge-val');
+    const enemyDiamondEl = document.getElementById('enemy-diamond-icon');
+
+    if (enemyCard) {
+      if (this.lockedEnemy && !this.lockedEnemy.ship.isSinking) {
+        enemyCard.classList.add('visible');
+        if (enemyNameEl) enemyNameEl.textContent = this.lockedEnemy.name;
+        if (enemyDistEl) {
+          const dist = Math.round(this.playerShip.position.distanceTo(this.lockedEnemy.ship.position));
+          enemyDistEl.textContent = dist;
+        }
+        if (enemyHpValEl && enemyHpFillEl) {
+          const hpPct = Math.max(0, this.lockedEnemy.ship.health / this.lockedEnemy.ship.maxHealth);
+          enemyHpFillEl.style.width = `${hpPct * 100}%`;
+          enemyHpValEl.textContent = Math.round(this.lockedEnemy.ship.health);
+        }
+        if (enemyBadgeEl) {
+          enemyBadgeEl.textContent = 'ALERTED';
+          enemyBadgeEl.classList.remove('sinking');
+        }
+        if (enemyDiamondEl) {
+          enemyDiamondEl.style.color = '#ff1744';
+        }
+      } else if (this.lockedEnemy && this.lockedEnemy.ship.isSinking) {
+        enemyCard.classList.add('visible');
+        if (enemyHpFillEl) enemyHpFillEl.style.width = '0%';
+        if (enemyHpValEl) enemyHpValEl.textContent = '0';
+        if (enemyBadgeEl) {
+          enemyBadgeEl.textContent = 'SINKING';
+          enemyBadgeEl.classList.add('sinking');
+        }
+      } else {
+        enemyCard.classList.remove('visible');
+      }
+    }
 
     // Mini-map
     if (this.minimapCtx) {
@@ -536,16 +614,45 @@ class Game {
       ctx.stroke();
     });
 
-    // Enemy
-    if (!this.enemyShip.ship.isSinking) {
-      const eRelX = (this.enemyShip.ship.position.x - this.playerShip.position.x) * scale;
-      const eRelZ = (this.enemyShip.ship.position.z - this.playerShip.position.z) * scale;
+    // Enemies
+    this.enemies.forEach((enemy) => {
+      if (enemy.ship.isSinking) return;
+      const eRelX = (enemy.ship.position.x - this.playerShip.position.x) * scale;
+      const eRelZ = (enemy.ship.position.z - this.playerShip.position.z) * scale;
 
-      ctx.beginPath();
-      ctx.arc(eRelX, eRelZ, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#ff1744';
-      ctx.fill();
-    }
+      if (enemy === this.lockedEnemy) {
+        // Pulsing alert ring around locked enemy
+        const pulseR = 6.5 + Math.sin(performance.now() * 0.008) * 1.8;
+        ctx.beginPath();
+        ctx.arc(eRelX, eRelZ, pulseR, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 23, 68, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Red alert diamond
+        ctx.save();
+        ctx.translate(eRelX, eRelZ);
+        ctx.rotate(Math.PI * 0.25);
+        ctx.fillStyle = '#ff1744';
+        ctx.fillRect(-3.5, -3.5, 7, 7);
+        ctx.strokeStyle = '#ffd54f';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-3.5, -3.5, 7, 7);
+        ctx.restore();
+      } else if (enemy.standoff) {
+        // Dim grey dot for standoff enemy (backing away)
+        ctx.beginPath();
+        ctx.arc(eRelX, eRelZ, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#78909c';
+        ctx.fill();
+      } else {
+        // Amber dot for patrolling enemy
+        ctx.beginPath();
+        ctx.arc(eRelX, eRelZ, 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffb300';
+        ctx.fill();
+      }
+    });
 
     // Player
     ctx.restore();
@@ -567,6 +674,67 @@ class Game {
     ctx.restore();
   }
 
+  updateEnemies(delta) {
+    const playerPos = this.playerShip.position;
+
+    // 1. Check if currently locked enemy is sunken or has fled far away
+    if (this.lockedEnemy) {
+      if (this.lockedEnemy.ship.isSinking) {
+        this.lockedEnemy.isAlerted = false;
+        this.lockedEnemy.isLockedTarget = false;
+        this.lockedEnemy = null;
+      } else {
+        const dist = playerPos.distanceTo(this.lockedEnemy.ship.position);
+        if (dist > 250) {
+          this.lockedEnemy.isAlerted = false;
+          this.lockedEnemy.isLockedTarget = false;
+          this.lockedEnemy = null;
+        }
+      }
+    }
+
+    // 2. If no enemy currently alerted/locked, engage the closest unsunk enemy within alert range (135m)
+    if (!this.lockedEnemy) {
+      let closestEnemy = null;
+      let closestDist = Infinity;
+
+      for (const enemy of this.enemies) {
+        if (enemy.ship.isSinking) continue;
+        const dist = playerPos.distanceTo(enemy.ship.position);
+        if (dist < 135 && dist < closestDist) {
+          closestDist = dist;
+          closestEnemy = enemy;
+        }
+      }
+
+      if (closestEnemy) {
+        this.lockedEnemy = closestEnemy;
+        this.lockedEnemy.isAlerted = true;
+        this.lockedEnemy.isLockedTarget = true;
+        this.lockedEnemy.standoff = false;
+      }
+    }
+
+    // 3. Strict 1-on-1 Rule:
+    // Only 1 enemy ship engages at a time! All other enemy ships must stand off, hold perimeter, and back away
+    for (const enemy of this.enemies) {
+      if (enemy === this.lockedEnemy) {
+        enemy.isAlerted = true;
+        enemy.isLockedTarget = true;
+        enemy.standoff = false;
+      } else {
+        enemy.isAlerted = false;
+        enemy.isLockedTarget = false;
+        enemy.standoff = (this.lockedEnemy !== null);
+      }
+      enemy.update(delta, this.wind, this.playerShip);
+    }
+
+    // 4. Update legacy reference & combat audio mode
+    this.enemyShip = this.lockedEnemy || this.enemies[0];
+    this.sound.setCombatMode(this.lockedEnemy !== null && !this.lockedEnemy.ship.isSinking);
+  }
+
   animate(currentTime) {
     requestAnimationFrame(this.animate);
     const now = currentTime || performance.now();
@@ -579,7 +747,7 @@ class Game {
     // 2. Update physical simulation
     this.ocean.update(delta, this.playerShip.position);
     this.playerShip.update(delta, this.wind);
-    this.enemyShip.update(delta, this.wind, this.playerShip);
+    this.updateEnemies(delta);
     this.combat.update(delta);
 
     // 3. Camera & HUD
