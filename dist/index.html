@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Assassin's Creed: Pirates - Web Revival</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☠️</text></svg>" />
+  <script>
+    function displayDebugError(msg) {
+      let box = document.getElementById('debug-error-box');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'debug-error-box';
+        box.style = 'position:fixed;top:10px;left:10px;right:10px;background:rgba(200,20,20,0.95);color:#fff;padding:16px;z-index:999999;font-family:monospace;font-size:13px;border:2px solid #ffcc00;border-radius:6px;max-height:50vh;overflow:auto;white-space:pre-wrap;';
+        const target = document.body || document.documentElement;
+        if (target) target.appendChild(box);
+      }
+      if (box) box.innerText += '\n' + msg;
+    }
+    window.addEventListener('error', function(e) {
+      console.error('GLOBAL ERROR:', e);
+      if (e && e.message && e.message !== 'Script error.') {
+        displayDebugError('[ERROR] ' + e.message + ' (' + (e.filename || 'module') + ':' + (e.lineno || 0) + ')\n' + (e.error && e.error.stack ? e.error.stack : ''));
+      }
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      console.error('UNHANDLED REJECTION:', e);
+      displayDebugError('[REJECTION] ' + e.reason);
+    });
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: 'Trebuchet MS', 'Cinzel', serif, sans-serif;
+      color: #f4ecd8;
+    }
+
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Top HUD: Compass, Status, Mini-map */
+    #hud-top {
+      position: absolute;
+      top: 16px;
+      left: 20px;
+      right: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .hud-panel {
+      background: linear-gradient(180deg, rgba(28, 20, 15, 0.88) 0%, rgba(15, 10, 8, 0.92) 100%);
+      border: 2px solid #a68449;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 10px rgba(166, 132, 73, 0.3);
+      padding: 10px 16px;
+      pointer-events: auto;
+    }
+
+    /* Ship Status */
+    #status-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 210px;
+    }
+
+    .status-title {
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #e5c378;
+      font-weight: bold;
+    }
+
+    .hp-bar-container {
+      width: 100%;
+      height: 14px;
+      background: #2a1810;
+      border: 1px solid #7c5e32;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    #hp-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #2e7d32, #4caf50);
+      transition: width 0.3s ease;
+    }
+
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #d1c2a5;
+    }
+
+    /* Compass & Wind */
+    #compass-container {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    #compass-dial {
+      position: relative;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid #bba168;
+      background: radial-gradient(circle, #3d2c1d 0%, #17100b 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #wind-needle {
+      position: absolute;
+      width: 4px;
+      height: 48px;
+      background: linear-gradient(180deg, #4fc3f7 50%, #d32f2f 50%);
+      transform-origin: center center;
+      transition: transform 0.1s linear;
+      border-radius: 2px;
+    }
+
+    .wind-info {
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+    }
+
+    .wind-label {
+      color: #90caf9;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    /* Mini-Map */
+    #minimap-canvas {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 3px solid #a68449;
+      background: #0d2836;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Bottom HUD: Sail Lever, Broadside Buttons, Helm Wheel */
+    #hud-bottom {
+      position: absolute;
+      bottom: 20px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Sail Speed Lever */
+    #sail-lever-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .lever-track {
+      width: 44px;
+      height: 130px;
+      background: #241912;
+      border: 2px solid #8c6c39;
+      border-radius: 22px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 6px 0;
+      align-items: center;
+      box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+    }
+
+    .lever-notch {
+      width: 24px;
+      height: 4px;
+      background: #725732;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+
+    .lever-notch.active {
+      background: #ffcc00;
+      box-shadow: 0 0 8px #ffcc00;
+    }
+
+    .sail-btn {
+      width: 100%;
+      height: 36px;
+      background: none;
+      border: none;
+      color: #dfcfb2;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sail-btn.selected {
+      color: #ffd54f;
+      text-shadow: 0 0 6px rgba(255, 213, 79, 0.8);
+    }
+
+    /* Broadside Combat Buttons */
+    #combat-panel {
+      display: flex;
+      gap: 20px;
+      pointer-events: auto;
+    }
+
+    .broadside-btn {
+      background: linear-gradient(180deg, #441717 0%, #200a0a 100%);
+      border: 2px solid #c97941;
+      border-radius: 50%;
+      width: 82px;
+      height: 82px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #ffecd1;
+      font-size: 12px;
+      font-weight: bold;
+      text-transform: uppercase;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), inset 0 0 12px rgba(255, 100, 50, 0.3);
+      transition: transform 0.1s ease, border-color 0.2s ease;
+      position: relative;
+    }
+
+    .broadside-btn:active {
+      transform: scale(0.92);
+      border-color: #ff9800;
+    }
+
+    .broadside-btn .key-hint {
+      font-size: 10px;
+      color: #d19a66;
+      margin-top: 4px;
+    }
+
+    .cooldown-ring {
+      position: absolute;
+      top: -4px;
+      left: -4px;
+      width: 86px;
+      height: 86px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 152, 0, 0.3);
+      pointer-events: none;
+    }
+
+    /* Helm Wheel */
+    #helm-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    #helm-wheel {
+      width: 120px;
+      height: 120px;
+      cursor: grab;
+      filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.8));
+      transition: transform 0.1s ease-out;
+    }
+
+    #helm-wheel:active {
+      cursor: grabbing;
+    }
+
+    /* Start / Instruction Overlay */
+    #splash-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, rgba(10, 15, 20, 0.88) 0%, rgba(5, 8, 10, 0.98) 100%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      transition: opacity 0.5s ease;
+    }
+
+    #splash-modal.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .splash-title {
+      font-size: 42px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: #ffca28;
+      text-shadow: 0 0 24px rgba(255, 202, 40, 0.6);
+      margin-bottom: 8px;
+    }
+
+    .splash-subtitle {
+      font-size: 16px;
+      color: #b0bec5;
+      margin-bottom: 28px;
+      letter-spacing: 1px;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 12px 24px;
+      background: rgba(30, 20, 14, 0.8);
+      border: 1px solid #8d6e63;
+      padding: 18px 26px;
+      border-radius: 8px;
+      margin-bottom: 28px;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .control-key {
+      color: #ffe082;
+      font-weight: bold;
+    }
+
+    #start-btn {
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      color: #fff;
+      border: 2px solid #ffb300;
+      font-size: 18px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 14px 44px;
+      border-radius: 30px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 8px 24px rgba(211, 47, 47, 0.5);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    #start-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 10px 30px rgba(255, 179, 0, 0.7);
+    }
+
+    /* Mute button */
+    #mute-btn {
+      position: absolute;
+      top: 16px;
+      right: 160px;
+      background: rgba(20, 15, 10, 0.8);
+      border: 1px solid #b8860b;
+      color: #e5c378;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      pointer-events: auto;
+      z-index: 10;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-C6qbrJbf.js"></script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <!-- Audio Mute Button -->
+  <button id="mute-btn">🔊 Audio: ON</button>
+
+  <!-- Top HUD -->
+  <div id="hud-top">
+    <!-- Ship Integrity & Speed -->
+    <div class="hud-panel" id="status-card">
+      <div class="status-title">Jackdaw</div>
+      <div class="hp-bar-container">
+        <div id="hp-fill"></div>
+      </div>
+      <div class="stats-row">
+        <span>Speed: <strong id="speed-val">0.0</strong> kts</span>
+        <span>Hull: <strong id="hp-val">100</strong>%</span>
+      </div>
+    </div>
+
+    <!-- Compass & Wind Direction -->
+    <div class="hud-panel" id="compass-container">
+      <div id="compass-dial">
+        <div id="wind-needle"></div>
+      </div>
+      <div class="wind-info">
+        <span class="wind-label">WIND</span>
+        <span id="wind-speed">14 Knots</span>
+        <span id="wind-status" style="color: #81c784;">Favorable</span>
+      </div>
+    </div>
+
+    <!-- Mini-Map -->
+    <canvas id="minimap-canvas" width="120" height="120"></canvas>
+  </div>
+
+  <!-- Bottom HUD -->
+  <div id="hud-bottom">
+    <!-- Sail Lever (Speed Control) -->
+    <div class="hud-panel" id="sail-lever-panel">
+      <div style="font-size: 11px; font-weight: bold; color: #ffb300;">SAILS</div>
+      <div class="lever-track">
+        <button class="sail-btn selected" id="btn-sail-2" title="Full Sail (W)">FULL</button>
+        <div class="lever-notch active" id="notch-2"></div>
+        <button class="sail-btn" id="btn-sail-1" title="Half Sail">HALF</button>
+        <div class="lever-notch" id="notch-1"></div>
+        <button class="sail-btn" id="btn-sail-0" title="Furled / Stop (S)">FURL</button>
+        <div class="lever-notch" id="notch-0"></div>
+      </div>
+    </div>
+
+    <!-- Broadside Cannons -->
+    <div id="combat-panel">
+      <button class="broadside-btn" id="btn-fire-port">
+        PORT
+        <span class="key-hint">[ Q ]</span>
+        <div class="cooldown-ring" id="cd-port"></div>
+      </button>
+
+      <button class="broadside-btn" id="btn-fire-starboard">
+        STBD
+        <span class="key-hint">[ E ]</span>
+        <div class="cooldown-ring" id="cd-starboard"></div>
+      </button>
+    </div>
+
+    <!-- Interactive Ship Helm Wheel -->
+    <div id="helm-container">
+      <svg id="helm-wheel" viewBox="0 0 100 100">
+        <!-- Outer Rim -->
+        <circle cx="50" cy="50" r="40" fill="none" stroke="#7a4b22" stroke-width="6" />
+        <circle cx="50" cy="50" r="37" fill="none" stroke="#d4af37" stroke-width="1.5" />
+        <!-- Hub -->
+        <circle cx="50" cy="50" r="14" fill="#3d210b" stroke="#d4af37" stroke-width="3" />
+        <circle cx="50" cy="50" r="6" fill="#d4af37" />
+        <!-- 8 Spokes -->
+        <line x1="50" y1="10" x2="50" y2="90" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <line x1="10" y1="50" x2="90" y2="50" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <line x1="22" y1="22" x2="78" y2="78" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <line x1="22" y1="78" x2="78" y2="22" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <!-- Handles -->
+        <circle cx="50" cy="5" r="4" fill="#d4af37" />
+        <circle cx="50" cy="95" r="4" fill="#d4af37" />
+        <circle cx="5" cy="50" r="4" fill="#d4af37" />
+        <circle cx="95" cy="50" r="4" fill="#d4af37" />
+        <circle cx="18" cy="18" r="4" fill="#d4af37" />
+        <circle cx="82" cy="82" r="4" fill="#d4af37" />
+        <circle cx="18" cy="82" r="4" fill="#d4af37" />
+        <circle cx="82" cy="18" r="4" fill="#d4af37" />
+      </svg>
+      <div style="font-size: 11px; color: #bcaaa4; font-weight: bold;">[ A / D ] STEER</div>
+    </div>
+  </div>
+
+  <!-- Splash / Tutorial Modal -->
+  <div id="splash-modal">
+    <h1 class="splash-title">Assassin's Creed: Pirates</h1>
+    <p class="splash-subtitle">Web Revival Prototype &bull; High Seas Naval Sandbox</p>
+
+    <div class="control-grid">
+      <span class="control-key">A / D or Wheel</span>
+      <span>Turn Rudder (Port / Starboard)</span>
+      <span class="control-key">W / S</span>
+      <span>Toggle Sails (Full / Half / Furled)</span>
+      <span class="control-key">Q</span>
+      <span>Fire Port (Left) Broadside Cannons</span>
+      <span class="control-key">E</span>
+      <span>Fire Starboard (Right) Cannons</span>
+      <span class="control-key">Mouse Drag</span>
+      <span>Rotate Orbit Camera View</span>
+    </div>
+
+    <button id="start-btn">SET SAIL</button>
+  </div>
+
+</body>
+</html>
