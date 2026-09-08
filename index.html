@@ -356,6 +356,52 @@
       text-shadow: 0 0 6px rgba(255, 213, 79, 0.8);
     }
 
+    .sail-step-btn {
+      width: 100%;
+      height: 28px;
+      background: linear-gradient(180deg, rgba(50, 32, 22, 0.9) 0%, rgba(25, 15, 10, 0.95) 100%);
+      border: 1.5px solid #d4af37;
+      border-radius: 6px;
+      color: #ffd54f;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    .sail-step-btn:hover {
+      background: linear-gradient(180deg, #5d3d24 0%, #3d2412 100%);
+      border-color: #ffeb3b;
+    }
+
+    .sail-step-btn:active {
+      transform: scale(0.95);
+      background: linear-gradient(180deg, #ffb300 0%, #f57f17 100%);
+      color: #000;
+    }
+
+    .sail-step-btn.down {
+      border-color: #e57373;
+      color: #ffcdd2;
+    }
+
+    .sail-step-btn.down:hover {
+      border-color: #ef5350;
+    }
+
+    .sail-step-btn.down:active {
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      color: #fff;
+    }
+
     /* Broadside Combat Buttons */
     #combat-panel {
       display: flex;
@@ -612,21 +658,6 @@
       box-shadow: 0 10px 30px rgba(255, 179, 0, 0.7);
     }
 
-    /* Mute button */
-    #mute-btn {
-      position: absolute;
-      top: 16px;
-      right: 160px;
-      background: rgba(20, 15, 10, 0.8);
-      border: 1px solid #b8860b;
-      color: #e5c378;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-      pointer-events: auto;
-      z-index: 10;
-    }
 
     #damage-vignette {
       position: absolute;
@@ -890,15 +921,19 @@
       color: #fff;
     }
 
-    /* Top-Right Tools Bar */
-    #hud-top-right-tools {
-      position: absolute;
-      top: 16px;
-      right: 20px;
+    /* Top-Right Tools Bar & Minimap Alignment */
+    #hud-top-right {
       display: flex;
       align-items: center;
-      gap: 10px;
-      z-index: 15;
+      gap: 12px;
+      pointer-events: auto;
+    }
+
+    #hud-top-right-tools {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
       pointer-events: auto;
     }
 
@@ -918,6 +953,8 @@
       align-items: center;
       gap: 6px;
       user-select: none;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .hud-tool-btn:hover {
@@ -1730,13 +1767,6 @@
   <div id="damage-vignette"></div>
   <div id="canvas-container"></div>
 
-  <!-- Top Utility Tools (Audio, Settings, Multiplayer) -->
-  <div id="hud-top-right-tools">
-    <button id="mute-btn" class="hud-tool-btn">🔊 Audio: ON</button>
-    <button id="btn-settings-hud" class="hud-tool-btn">⚙️ Settings</button>
-    <button id="btn-multiplayer-hud" class="hud-tool-btn">⚔️ Multiplayer</button>
-  </div>
-
   <!-- In-Game P2P Status & Quick Emotes -->
   <div id="p2p-hud-widget" class="hud-panel hidden">
     <span class="p2p-dot">🟢</span>
@@ -1810,11 +1840,17 @@
       </div>
     </div>
 
-    <!-- Mini-Map -->
-    <canvas id="minimap-canvas" width="120" height="120"></canvas>
+    <!-- Right Column: Tools (Audio, Settings) & Mini-Map aligned together without overlap -->
+    <div id="hud-top-right">
+      <div id="hud-top-right-tools">
+        <button id="mute-btn" class="hud-tool-btn">🔊 Audio: ON</button>
+        <button id="btn-settings-hud" class="hud-tool-btn">⚙️ Settings</button>
+      </div>
+      <canvas id="minimap-canvas" width="120" height="120"></canvas>
+    </div>
   </div>
 
-  <!-- Mobile On-Screen Controls Container -->
+  <!-- Mobile On-Screen Controls Container (Positioned on Left above helm) -->
   <div id="mobile-controls-container" class="hud-customizable" data-widget-title="MOBILE DPAD">
     <div id="mobile-dpad">
       <button id="mbtn-steer-left" class="mobile-touch-btn" title="Steer Port (Left)">◀<span style="font-size:8.5px;">PORT</span></button>
@@ -1827,22 +1863,36 @@
     </div>
   </div>
 
-  <!-- Bottom HUD -->
+  <!-- Bottom HUD: Left = Steering Wheel, Center = Broadside Cannons, Right = Sail Speed -->
   <div id="hud-bottom">
-    <!-- Sail Lever (Speed Control) -->
-    <div class="hud-panel hud-customizable" id="sail-lever-panel" data-widget-title="SAILS">
-      <div style="font-size: 11px; font-weight: bold; color: #ffb300;">SAILS</div>
-      <div class="lever-track">
-        <button class="sail-btn selected" id="btn-sail-2" title="Full Sail (W)">FULL</button>
-        <div class="lever-notch active" id="notch-2"></div>
-        <button class="sail-btn" id="btn-sail-1" title="Half Sail">HALF</button>
-        <div class="lever-notch" id="notch-1"></div>
-        <button class="sail-btn" id="btn-sail-0" title="Furled / Stop (S)">FURL</button>
-        <div class="lever-notch" id="notch-0"></div>
-      </div>
+    <!-- LEFT: Interactive Ship Helm Wheel & Steering -->
+    <div id="helm-container" class="hud-customizable" data-widget-title="HELM WHEEL">
+      <svg id="helm-wheel" viewBox="0 0 100 100">
+        <!-- Outer Rim -->
+        <circle cx="50" cy="50" r="40" fill="none" stroke="#7a4b22" stroke-width="6" />
+        <circle cx="50" cy="50" r="37" fill="none" stroke="#d4af37" stroke-width="1.5" />
+        <!-- Hub -->
+        <circle cx="50" cy="50" r="14" fill="#3d210b" stroke="#d4af37" stroke-width="3" />
+        <circle cx="50" cy="50" r="6" fill="#d4af37" />
+        <!-- 8 Spokes -->
+        <line x1="50" y1="10" x2="50" y2="90" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <line x1="10" y1="50" x2="90" y2="50" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <line x1="22" y1="22" x2="78" y2="78" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <line x1="22" y1="78" x2="78" y2="22" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
+        <!-- Handles -->
+        <circle cx="50" cy="5" r="4" fill="#d4af37" />
+        <circle cx="50" cy="95" r="4" fill="#d4af37" />
+        <circle cx="5" cy="50" r="4" fill="#d4af37" />
+        <circle cx="95" cy="50" r="4" fill="#d4af37" />
+        <circle cx="18" cy="18" r="4" fill="#d4af37" />
+        <circle cx="82" cy="82" r="4" fill="#d4af37" />
+        <circle cx="18" cy="82" r="4" fill="#d4af37" />
+        <circle cx="82" cy="18" r="4" fill="#d4af37" />
+      </svg>
+      <div style="font-size: 11px; color: #bcaaa4; font-weight: bold;">[ A / D ] STEER</div>
     </div>
 
-    <!-- Broadside Cannons -->
+    <!-- CENTER: Broadside Cannons -->
     <div id="combat-panel" class="hud-customizable" data-widget-title="CANNONS">
       <div class="broadside-wrapper">
         <button class="broadside-btn" id="btn-fire-port">
@@ -1875,32 +1925,21 @@
       </div>
     </div>
 
-    <!-- Interactive Ship Helm Wheel -->
-    <div id="helm-container" class="hud-customizable" data-widget-title="HELM WHEEL">
-      <svg id="helm-wheel" viewBox="0 0 100 100">
-        <!-- Outer Rim -->
-        <circle cx="50" cy="50" r="40" fill="none" stroke="#7a4b22" stroke-width="6" />
-        <circle cx="50" cy="50" r="37" fill="none" stroke="#d4af37" stroke-width="1.5" />
-        <!-- Hub -->
-        <circle cx="50" cy="50" r="14" fill="#3d210b" stroke="#d4af37" stroke-width="3" />
-        <circle cx="50" cy="50" r="6" fill="#d4af37" />
-        <!-- 8 Spokes -->
-        <line x1="50" y1="10" x2="50" y2="90" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
-        <line x1="10" y1="50" x2="90" y2="50" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
-        <line x1="22" y1="22" x2="78" y2="78" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
-        <line x1="22" y1="78" x2="78" y2="22" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
-        <!-- Handles -->
-        <circle cx="50" cy="5" r="4" fill="#d4af37" />
-        <circle cx="50" cy="95" r="4" fill="#d4af37" />
-        <circle cx="5" cy="50" r="4" fill="#d4af37" />
-        <circle cx="95" cy="50" r="4" fill="#d4af37" />
-        <circle cx="18" cy="18" r="4" fill="#d4af37" />
-        <circle cx="82" cy="82" r="4" fill="#d4af37" />
-        <circle cx="18" cy="82" r="4" fill="#d4af37" />
-        <circle cx="82" cy="18" r="4" fill="#d4af37" />
-      </svg>
-      <div style="font-size: 11px; color: #bcaaa4; font-weight: bold;">[ A / D ] STEER</div>
+    <!-- RIGHT: Sail Lever (Speed Control with Sail Up / Down Step Buttons) -->
+    <div class="hud-panel hud-customizable" id="sail-lever-panel" data-widget-title="SAILS">
+      <div style="font-size: 11px; font-weight: bold; color: #ffb300; margin-bottom: 4px;">SAILS</div>
+      <button class="sail-step-btn up" id="btn-sail-up" title="Sail Up (W)">▲ SAIL UP</button>
+      <div class="lever-track" style="margin: 6px 0;">
+        <button class="sail-btn selected" id="btn-sail-2" title="Full Sail (W)">FULL</button>
+        <div class="lever-notch active" id="notch-2"></div>
+        <button class="sail-btn" id="btn-sail-1" title="Half Sail">HALF</button>
+        <div class="lever-notch" id="notch-1"></div>
+        <button class="sail-btn" id="btn-sail-0" title="Furled / Stop (S)">FURL</button>
+        <div class="lever-notch" id="notch-0"></div>
+      </div>
+      <button class="sail-step-btn down" id="btn-sail-down" title="Sail Down / Stop (S)">▼ SAIL DOWN</button>
     </div>
+  </div>
   </div>
 
   <!-- Enemy Sunk Victory & Salvage Modal -->

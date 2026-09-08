@@ -462,14 +462,12 @@ class Game {
       if (settingsModal) settingsModal.classList.add('hidden');
     });
 
-    // Multiplayer Modal
-    const btnMultiplayerHud = document.getElementById('btn-multiplayer-hud');
+    // Multiplayer Modal (accessible from main menu)
     const btnCloseMultiplayer = document.getElementById('btn-close-multiplayer');
     const openMultiplayer = () => {
       if (multiplayerModal) multiplayerModal.classList.remove('hidden');
     };
     if (btnMenuMultiplayer) btnMenuMultiplayer.addEventListener('click', openMultiplayer);
-    if (btnMultiplayerHud) btnMultiplayerHud.addEventListener('click', openMultiplayer);
     if (btnCloseMultiplayer) btnCloseMultiplayer.addEventListener('click', () => {
       if (multiplayerModal) multiplayerModal.classList.add('hidden');
     });
@@ -485,6 +483,30 @@ class Game {
     };
     if (muteBtn) muteBtn.addEventListener('click', toggleSound);
     if (settingsAudioBtn) settingsAudioBtn.addEventListener('click', toggleSound);
+
+    // Sail Step Controls (Up / Down for mobile & desktop)
+    const btnSailUp = document.getElementById('btn-sail-up');
+    const btnSailDown = document.getElementById('btn-sail-down');
+    if (btnSailUp) {
+      btnSailUp.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.changeSail(Math.min(2, this.playerShip.sailState + 1));
+      });
+      btnSailUp.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        this.changeSail(Math.min(2, this.playerShip.sailState + 1));
+      }, { passive: true });
+    }
+    if (btnSailDown) {
+      btnSailDown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.changeSail(Math.max(0, this.playerShip.sailState - 1));
+      });
+      btnSailDown.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        this.changeSail(Math.max(0, this.playerShip.sailState - 1));
+      }, { passive: true });
+    }
 
     [0, 1, 2].forEach((state) => {
       const btn = document.getElementById(`btn-sail-${state}`);
@@ -800,10 +822,10 @@ class Game {
       'status-card'
     ];
 
-    // Load saved layout
+    // Load saved layout (v2 default: wheel on left, sails on right)
     let savedLayout = null;
     try {
-      savedLayout = JSON.parse(localStorage.getItem('deadmanswake_hud_layout'));
+      savedLayout = JSON.parse(localStorage.getItem('deadmanswake_hud_layout_v2'));
     } catch (e) {}
 
     customizableWidgets.forEach(id => {
@@ -1182,24 +1204,23 @@ class Game {
     const activeEnemy = (this.lockedEnemy && !this.lockedEnemy.ship.isSinking) ? this.lockedEnemy : null;
     let desiredLookTarget;
 
+    const isUserDragging = this.isMouseDragging || (performance.now() - this.camLastUserDrag < 700);
+
     if (activeEnemy) {
       const toEnemy = activeEnemy.ship.position.clone().sub(shipPos);
       const enemyDist = Math.max(1, toEnemy.length());
-      const enemyBearing = Math.atan2(toEnemy.x, -toEnemy.z);
-
-      // Check if user is actively dragging or recently released mouse
-      const isUserDragging = this.isMouseDragging || (performance.now() - this.camLastUserDrag < 700);
+      // Desired camera angle positioned opposite to the enemy
+      const enemyCamAngle = Math.atan2(-toEnemy.x, -toEnemy.z);
 
       if (!isUserDragging) {
-        // Shortest-arc angular difference between current angle and enemy bearing
-        let angleDiff = enemyBearing - this.camOrbit.angleH;
+        let angleDiff = enemyCamAngle - this.camHeading;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
 
-        const lockSpeed = Math.min(delta * 3.2, 0.12);
-        this.camOrbit.angleH += angleDiff * lockSpeed;
+        const lockSpeed = Math.min(delta * 3.5, 0.15);
+        this.camHeading += angleDiff * lockSpeed;
 
-        // Settle vertical pitch toward an optimal naval broadside view angle (~0.22 rad)
+        this.camOrbit.angleH = THREE.MathUtils.lerp(this.camOrbit.angleH, 0, delta * 3.0);
         this.camOrbit.angleV = THREE.MathUtils.lerp(this.camOrbit.angleV, 0.22, Math.min(delta * 2.0, 0.06));
       }
 
@@ -1208,22 +1229,47 @@ class Game {
       desiredLookTarget = shipPos.clone().lerp(activeEnemy.ship.position, blend);
       desiredLookTarget.y = shipHeave + (this.camOrbit.lookHeight || 3.2);
     } else {
+      const fwd = this.playerShip.getForwardVector();
       desiredLookTarget = new THREE.Vector3(
-        shipPos.x,
+        shipPos.x + fwd.x * 3.2,
         shipHeave + (this.camOrbit.lookHeight || 3.2),
-        shipPos.z
+        shipPos.z + fwd.z * 3.2
       );
+
+      // Dynamic camera turn tracking: follow ship's rotation as it turns left / right
+      if (immediate || this.camHeading === undefined) {
+        this.camHeading = this.playerShip.heading;
+      } else {
+        let diff = this.playerShip.heading - this.camHeading;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+
+        const isTurning = Math.abs(this.playerShip.rudder) > 0.04 || Math.abs(this.mobileSteer || 0) > 0.04;
+        const followRate = isUserDragging ? 1.5 : (isTurning ? 7.5 : 4.5);
+        this.camHeading += diff * Math.min(delta * followRate, 0.35);
+
+        // When steering or after being idle without dragging, smoothly ease manual orbit back to neutral
+        if (!isUserDragging) {
+          if (isTurning || (performance.now() - this.camLastUserDrag > 2000)) {
+            this.camOrbit.angleH = THREE.MathUtils.lerp(this.camOrbit.angleH, 0, delta * 2.5);
+          }
+        }
+      }
     }
 
-    const camAngle = Math.PI + this.camOrbit.angleH;
+    // Camera positioning behind ship:
+    // When totalAngle = 0: camera sits at +Z (behind stern of ship sailing forward -Z)
+    // When turning LEFT (heading > 0): ship bow points -X (left), camera sits at +X (behind stern), looking LEFT (-X)
+    // When turning RIGHT (heading < 0): ship bow points +X (right), camera sits at -X (behind stern), looking RIGHT (+X)
+    const totalAngle = (this.camHeading || 0) + (this.camOrbit.angleH || 0);
     const dist = this.camOrbit.distance;
     const height = dist * Math.sin(this.camOrbit.angleV) + this.camOrbit.height;
     const horizDist = dist * Math.cos(this.camOrbit.angleV);
 
     const desiredCamPos = new THREE.Vector3(
-      shipPos.x + Math.sin(camAngle) * horizDist,
+      shipPos.x + Math.sin(totalAngle) * horizDist,
       shipHeave + height,
-      shipPos.z - Math.cos(camAngle) * horizDist
+      shipPos.z + Math.cos(totalAngle) * horizDist
     );
 
     if (!this.camLookTarget) {
