@@ -5,6 +5,7 @@ import { CombatSystem } from './combat.js';
 import { EnemyShip } from './enemy.js';
 import { Archipelago } from './islands.js';
 import { SoundController } from './audio.js';
+import { CollisionSystem } from './collision.js';
 
 // Camera Chase and Zoom Presets based on Sail State (authentic to AC Pirates)
 export const SAIL_CAMERA_PRESETS = {
@@ -29,6 +30,17 @@ class Game {
     this.prevCooldowns = { port: 0, starboard: 0 };
     this.maxCooldown = 3.5;
     this.isFirstFrame = true;
+
+    // Camera Shake state
+    this.cameraShake = { intensity: 0, duration: 0 };
+
+    // Hold-to-Charge Broadside Aiming System (Long Range & Narrowing Yellow Sector)
+    this.broadsideCharge = {
+      active: false,
+      side: null,
+      chargeTime: 0,
+      maxChargeTime: 1.35
+    };
 
     this.initScene();
     this.initLights();
@@ -123,12 +135,79 @@ class Game {
     this.lockedEnemy = null;
     this.camLastUserDrag = 0;
     this.isMouseDragging = false;
+
+    // Collision & Ramming System (Islands, Ship-to-Ship, Front Impact Damage)
+    this.collision = new CollisionSystem(this.scene, this.archipelago, this.sound, this.combat, {
+      onCameraShake: (intensity, duration) => this.triggerCameraShake(intensity, duration),
+      onPlayerDamage: (dmg) => this.triggerDamageFeedback(dmg)
+    });
+  }
+
+  triggerCameraShake(intensity = 0.85, duration = 0.45) {
+    this.cameraShake.intensity = Math.max(this.cameraShake.intensity, intensity);
+    this.cameraShake.duration = Math.max(this.cameraShake.duration, duration);
+  }
+
+  triggerDamageFeedback(amount) {
+    const vignette = document.getElementById('damage-vignette');
+    if (vignette) {
+      vignette.classList.add('active');
+      setTimeout(() => vignette.classList.remove('active'), 280);
+    }
+    const statusCard = document.getElementById('status-card');
+    if (statusCard) {
+      statusCard.style.borderColor = '#ff1744';
+      statusCard.style.transform = 'scale(0.98)';
+      setTimeout(() => {
+        statusCard.style.borderColor = '#a68449';
+        statusCard.style.transform = 'none';
+      }, 300);
+    }
+  }
+
+  startBroadsideCharge(side) {
+    if (this.cooldowns[side] > 0 || this.playerShip.isSinking) return;
+    this.broadsideCharge.active = true;
+    this.broadsideCharge.side = side;
+    this.broadsideCharge.chargeTime = 0;
+
+    const btn = document.getElementById(`btn-fire-${side}`);
+    if (btn) {
+      btn.classList.remove('reloading');
+      btn.classList.add('charging');
+    }
+
+    this.combat.updateAimSector(this.playerShip, side, 0, this.enemies);
+  }
+
+  releaseBroadsideCharge(side) {
+    if (!this.broadsideCharge.active || this.broadsideCharge.side !== side) return;
+    const charge = Math.min(1.0, this.broadsideCharge.chargeTime / this.broadsideCharge.maxChargeTime);
+    this.broadsideCharge.active = false;
+    this.broadsideCharge.side = null;
+
+    const btn = document.getElementById(`btn-fire-${side}`);
+    if (btn) btn.classList.remove('charging');
+
+    this.combat.hideAimSector();
+    this.fireBroadside(side, charge);
+  }
+
+  cancelBroadsideCharge() {
+    if (this.broadsideCharge.active && this.broadsideCharge.side) {
+      const btn = document.getElementById(`btn-fire-${this.broadsideCharge.side}`);
+      if (btn) btn.classList.remove('charging');
+    }
+    this.broadsideCharge.active = false;
+    this.broadsideCharge.side = null;
+    this.combat.hideAimSector();
   }
 
   initControls() {
     this.keys = {
       w: false, s: false, a: false, d: false,
-      q: false, e: false
+      q: false, e: false,
+      q_held: false, e_held: false
     };
 
     window.addEventListener('keydown', (e) => {
@@ -155,15 +234,29 @@ class Game {
       } else if (key === 's' || key === 'arrowdown') {
         this.changeSail(Math.max(0, this.playerShip.sailState - 1));
       } else if (key === 'q') {
-        this.fireBroadside('port');
+        if (!this.keys.q_held) {
+          this.keys.q_held = true;
+          this.startBroadsideCharge('port');
+        }
       } else if (key === 'e') {
-        this.fireBroadside('starboard');
+        if (!this.keys.e_held) {
+          this.keys.e_held = true;
+          this.startBroadsideCharge('starboard');
+        }
       }
     });
 
     window.addEventListener('keyup', (e) => {
       const key = e.key.toLowerCase();
       if (this.keys.hasOwnProperty(key)) this.keys[key] = false;
+
+      if (key === 'q') {
+        this.keys.q_held = false;
+        this.releaseBroadsideCharge('port');
+      } else if (key === 'e') {
+        this.keys.e_held = false;
+        this.releaseBroadsideCharge('starboard');
+      }
 
       if (key === 'arrowleft') this.keys.a = false;
       if (key === 'arrowright') this.keys.d = false;
@@ -228,16 +321,53 @@ class Game {
     const btnStbd = document.getElementById('btn-fire-starboard');
 
     if (btnPort) {
-      btnPort.addEventListener('click', () => this.fireBroadside('port'));
-      btnPort.addEventListener('mouseenter', () => this.combat.updateAimArc(this.playerShip, 'port'));
-      btnPort.addEventListener('mouseleave', () => this.combat.hideAimArc());
+      btnPort.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        this.startBroadsideCharge('port');
+      });
+      btnPort.addEventListener('mouseup', (e) => {
+        e.stopPropagation();
+        this.releaseBroadsideCharge('port');
+      });
+      btnPort.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        this.startBroadsideCharge('port');
+      }, { passive: true });
+      btnPort.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+        this.releaseBroadsideCharge('port');
+      });
     }
 
     if (btnStbd) {
-      btnStbd.addEventListener('click', () => this.fireBroadside('starboard'));
-      btnStbd.addEventListener('mouseenter', () => this.combat.updateAimArc(this.playerShip, 'starboard'));
-      btnStbd.addEventListener('mouseleave', () => this.combat.hideAimArc());
+      btnStbd.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        this.startBroadsideCharge('starboard');
+      });
+      btnStbd.addEventListener('mouseup', (e) => {
+        e.stopPropagation();
+        this.releaseBroadsideCharge('starboard');
+      });
+      btnStbd.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+        this.startBroadsideCharge('starboard');
+      }, { passive: true });
+      btnStbd.addEventListener('touchend', (e) => {
+        e.stopPropagation();
+        this.releaseBroadsideCharge('starboard');
+      });
     }
+
+    window.addEventListener('mouseup', () => {
+      if (this.broadsideCharge && this.broadsideCharge.active) {
+        this.releaseBroadsideCharge(this.broadsideCharge.side);
+      }
+    });
+    window.addEventListener('touchend', () => {
+      if (this.broadsideCharge && this.broadsideCharge.active) {
+        this.releaseBroadsideCharge(this.broadsideCharge.side);
+      }
+    });
 
     // Steering Helm Wheel
     const helm = document.getElementById('helm-wheel');
@@ -324,7 +454,7 @@ class Game {
     }
   }
 
-  fireBroadside(side) {
+  fireBroadside(side, charge = 0) {
     if (this.cooldowns[side] > 0) return;
     this.cooldowns[side] = this.maxCooldown;
     this.prevCooldowns[side] = this.maxCooldown;
@@ -336,11 +466,12 @@ class Game {
     if (timer) timer.textContent = this.maxCooldown.toFixed(1) + 's';
     if (btn) {
       btn.classList.remove('reload-ready-anim');
+      btn.classList.remove('charging');
       btn.classList.add('reloading');
     }
 
     const targetShips = this.lockedEnemy ? this.lockedEnemy.ship : this.enemies.map(e => e.ship);
-    this.combat.fireBroadside(this.playerShip, targetShips, side);
+    this.combat.fireBroadside(this.playerShip, targetShips, side, charge);
   }
 
   updateCamera(delta, immediate = false) {
@@ -436,6 +567,16 @@ class Game {
       const lerpSpeed = Math.min(delta * 14.0, 0.8);
       this.camera.position.lerp(desiredCamPos, lerpSpeed);
       this.camLookTarget.lerp(desiredLookTarget, lerpSpeed);
+    }
+
+    // Dynamic Camera Shake upon collision / ramming impact
+    if (this.cameraShake && this.cameraShake.intensity > 0) {
+      const s = this.cameraShake.intensity;
+      this.camera.position.x += (Math.random() - 0.5) * 2.2 * s;
+      this.camera.position.y += (Math.random() - 0.5) * 1.6 * s;
+      this.camera.position.z += (Math.random() - 0.5) * 2.2 * s;
+      this.cameraShake.intensity = Math.max(0, this.cameraShake.intensity - delta * 2.6);
+      this.cameraShake.duration = Math.max(0, this.cameraShake.duration - delta);
     }
 
     this.camera.lookAt(this.camLookTarget);
@@ -744,10 +885,35 @@ class Game {
     // 1. Process player inputs first
     this.updateControls(delta);
 
+    // Update Hold-to-Charge Broadside Aiming System (Narrowing Yellow Sector + Long Range Line)
+    if (this.broadsideCharge && this.broadsideCharge.active) {
+      const side = this.broadsideCharge.side;
+      if (this.cooldowns[side] > 0 || this.playerShip.isSinking) {
+        this.cancelBroadsideCharge();
+      } else {
+        this.broadsideCharge.chargeTime += delta;
+        const charge = Math.min(1.0, this.broadsideCharge.chargeTime / this.broadsideCharge.maxChargeTime);
+        this.combat.updateAimSector(this.playerShip, side, charge, this.enemies);
+
+        const ring = document.getElementById(`ring-${side}`);
+        const timer = document.getElementById(`timer-${side}`);
+        const currentRange = Math.round(THREE.MathUtils.lerp(45, 145, charge));
+
+        if (ring) {
+          const ringCircumference = 282.74;
+          ring.style.strokeDashoffset = ringCircumference * (1 - charge);
+        }
+        if (timer) {
+          timer.textContent = `${currentRange}m${charge >= 0.99 ? ' MAX' : ''}`;
+        }
+      }
+    }
+
     // 2. Update physical simulation
     this.ocean.update(delta, this.playerShip.position);
     this.playerShip.update(delta, this.wind);
     this.updateEnemies(delta);
+    this.collision.update(delta, this.playerShip, this.enemies);
     this.combat.update(delta);
 
     // 3. Camera & HUD
@@ -767,12 +933,24 @@ function bootGame() {
   if (window.__gameInstance) return;
   console.log('⛵ [AC Pirates] Booting game engine...');
   window.__gameInstance = new Game();
+  window.game = window.__gameInstance;
   console.log('⛵ [AC Pirates] Game engine initialized successfully!');
-  if (typeof window !== 'undefined' && window.location.search.includes('autostart')) {
-    const modal = document.getElementById('splash-modal');
-    if (modal) modal.classList.add('hidden');
-    if (window.__gameInstance.sound) {
-      window.__gameInstance.sound.init();
+  if (typeof window !== 'undefined') {
+    if (window.location.search.includes('autostart')) {
+      const modal = document.getElementById('splash-modal');
+      if (modal) modal.classList.add('hidden');
+      if (window.__gameInstance.sound) {
+        window.__gameInstance.sound.init();
+      }
+    }
+    if (window.location.search.includes('testAim')) {
+      setTimeout(() => {
+        console.log('🎯 [TEST] Initiating Aim Charge on Starboard...');
+        window.__gameInstance.startBroadsideCharge('starboard');
+        setTimeout(() => {
+          console.log('🎯 [TEST] Holding charge at 70%... Aim Sector visible:', window.__gameInstance.combat.aimGroup.visible);
+        }, 800);
+      }, 1500);
     }
   }
 }

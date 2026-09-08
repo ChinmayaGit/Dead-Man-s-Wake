@@ -232,4 +232,50 @@ export class SoundController {
       osc.stop(now + offset + 0.05);
     });
   }
+
+  // Heavy ramming crash impact sound (deep resonant wood crunch + sub-bass impact)
+  playRammingCrash() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // 1. Deep Sub-Bass Ramming Thud
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(100, now);
+    osc.frequency.exponentialRampToValueAtTime(25, now + 0.55);
+    oscGain.gain.setValueAtTime(1.2, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+    osc.connect(oscGain);
+    oscGain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.6);
+
+    // 2. Heavy Timber Splinter Crunch
+    const bufferSize = Math.floor(ctx.sampleRate * 0.65);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.12));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(450, now);
+    filter.frequency.exponentialRampToValueAtTime(180, now + 0.5);
+    filter.Q.value = 3.0;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(1.1, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.65);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noise.start(now);
+    noise.stop(now + 0.65);
+  }
 }

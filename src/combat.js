@@ -10,102 +10,324 @@ export class CombatSystem {
     this.particles = [];
     this.flashes = [];
 
-    // Aiming Arc Guide Line
-    this.aimLine = this.createAimArc();
-    this.scene.add(this.aimLine);
-    this.aimLine.visible = false;
 
     // Cannonball material & geometry
-    this.ballGeo = new THREE.SphereGeometry(0.25, 8, 8);
+    this.ballGeo = new THREE.SphereGeometry(0.26, 8, 8);
     this.ballMat = new THREE.MeshStandardMaterial({
       color: 0x111111,
       roughness: 0.3,
       metalness: 0.9
     });
+
+    // Initialize Long-Range Aiming System (Yellow Transparent Sector + Ballistic Arc)
+    this.initAimVisuals();
   }
 
-  createAimArc() {
-    const pointsCount = 30;
-    const positions = new Float32Array(pointsCount * 3);
-    const colors = new Float32Array(pointsCount * 3);
+  initAimVisuals() {
+    this.aimGroup = new THREE.Group();
+    this.scene.add(this.aimGroup);
+    this.aimGroup.visible = false;
 
-    for (let i = 0; i < pointsCount; i++) {
-      positions[i * 3] = 0;
-      positions[i * 3 + 1] = 0;
-      positions[i * 3 + 2] = 0;
+    // 1. Yellow Transparent Water Impact Sector Mesh
+    // 32 angular segments -> 33 inner and 33 outer vertices (66 total)
+    this.sectorSegments = 32;
+    const vertexCount = (this.sectorSegments + 1) * 2;
+    const sectorPositions = new Float32Array(vertexCount * 3);
+    const sectorIndices = new Uint16Array(this.sectorSegments * 6);
 
-      // Golden aiming arc
-      colors[i * 3] = 1.0;
-      colors[i * 3 + 1] = 0.8;
-      colors[i * 3 + 2] = 0.2;
+    for (let i = 0; i < this.sectorSegments; i++) {
+      const i0 = i * 2;
+      const i1 = i * 2 + 1;
+      const i2 = (i + 1) * 2;
+      const i3 = (i + 1) * 2 + 1;
+
+      sectorIndices[i * 6 + 0] = i0;
+      sectorIndices[i * 6 + 1] = i1;
+      sectorIndices[i * 6 + 2] = i2;
+      sectorIndices[i * 6 + 3] = i2;
+      sectorIndices[i * 6 + 4] = i1;
+      sectorIndices[i * 6 + 5] = i3;
     }
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geo.computeBoundingSphere();
+    const sectorGeo = new THREE.BufferGeometry();
+    sectorGeo.setAttribute('position', new THREE.BufferAttribute(sectorPositions, 3));
+    sectorGeo.setIndex(new THREE.BufferAttribute(sectorIndices, 1));
 
-    const mat = new THREE.LineBasicMaterial({
+    this.aimSectorMat = new THREE.MeshBasicMaterial({
+      color: 0xffeb3b,
+      transparent: true,
+      opacity: 0.32,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+
+    this.aimSectorMesh = new THREE.Mesh(sectorGeo, this.aimSectorMat);
+    this.aimSectorMesh.renderOrder = 3;
+    this.aimGroup.add(this.aimSectorMesh);
+
+    // 2. Outer Impact Arc Line (where cannons will hit at maximum range)
+    const impactPositions = new Float32Array((this.sectorSegments + 1) * 3);
+    const impactGeo = new THREE.BufferGeometry();
+    impactGeo.setAttribute('position', new THREE.BufferAttribute(impactPositions, 3));
+    this.aimImpactLineMat = new THREE.LineBasicMaterial({
+      color: 0xffeb3b,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.85
+    });
+    this.aimImpactLine = new THREE.Line(impactGeo, this.aimImpactLineMat);
+    this.aimImpactLine.renderOrder = 4;
+    this.aimGroup.add(this.aimImpactLine);
+
+    // 3. Central Long-Range Ballistic Trajectory Line
+    const trajectoryPoints = 36;
+    const centerPositions = new Float32Array(trajectoryPoints * 3);
+    const centerColors = new Float32Array(trajectoryPoints * 3);
+
+    for (let i = 0; i < trajectoryPoints; i++) {
+      const p = i / (trajectoryPoints - 1);
+      centerColors[i * 3 + 0] = 1.0;
+      centerColors[i * 3 + 1] = 0.95 - p * 0.15;
+      centerColors[i * 3 + 2] = 0.2 + p * 0.2;
+    }
+
+    const centerGeo = new THREE.BufferGeometry();
+    centerGeo.setAttribute('position', new THREE.BufferAttribute(centerPositions, 3));
+    centerGeo.setAttribute('color', new THREE.BufferAttribute(centerColors, 3));
+    this.aimCenterLineMat = new THREE.LineBasicMaterial({
       vertexColors: true,
       linewidth: 3,
       transparent: true,
-      opacity: 0.8
+      opacity: 0.95
     });
+    this.aimCenterLine = new THREE.Line(centerGeo, this.aimCenterLineMat);
+    this.aimCenterLine.renderOrder = 5;
+    this.aimGroup.add(this.aimCenterLine);
 
-    return new THREE.Line(geo, mat);
+    // 4. Boundary Guide Lines (Left and Right edges of the narrow cone)
+    const edgeGeoL = new THREE.BufferGeometry();
+    edgeGeoL.setAttribute('position', new THREE.BufferAttribute(new Float32Array(trajectoryPoints * 3), 3));
+    const edgeGeoR = new THREE.BufferGeometry();
+    edgeGeoR.setAttribute('position', new THREE.BufferAttribute(new Float32Array(trajectoryPoints * 3), 3));
+    this.aimEdgeMat = new THREE.LineBasicMaterial({
+      color: 0xffd54f,
+      linewidth: 1.5,
+      transparent: true,
+      opacity: 0.65
+    });
+    this.aimLeftLine = new THREE.Line(edgeGeoL, this.aimEdgeMat);
+    this.aimRightLine = new THREE.Line(edgeGeoR, this.aimEdgeMat);
+    this.aimLeftLine.renderOrder = 4;
+    this.aimRightLine.renderOrder = 4;
+    this.aimGroup.add(this.aimLeftLine);
+    this.aimGroup.add(this.aimRightLine);
+
+    // 5. Impact Reticle Marker on Water
+    const reticleGeo = new THREE.RingGeometry(1.8, 2.6, 24);
+    reticleGeo.rotateX(-Math.PI * 0.5);
+    this.aimReticleMat = new THREE.MeshBasicMaterial({
+      color: 0xffeb3b,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    this.aimReticle = new THREE.Mesh(reticleGeo, this.aimReticleMat);
+    this.aimReticle.renderOrder = 6;
+    this.aimGroup.add(this.aimReticle);
+
+    // Backward compatibility
+    this.aimLine = this.aimCenterLine;
+  }
+
+  updateAimSector(playerShip, side, charge = 0, enemies = []) {
+    if (!this.aimGroup || !playerShip) return;
+
+    const chargeClamped = Math.max(0, Math.min(1.0, charge));
+
+    // Dynamic Attack Range: 45m (quick tap) up to 145m (fully held charge)
+    const minRange = 45.0;
+    const maxRange = 145.0;
+    const range = THREE.MathUtils.lerp(minRange, maxRange, chargeClamped);
+
+    // Dynamic Spread Angle: Wide (~22 deg) down to razor-sharp (~3.2 deg) as charge increases
+    const maxSpread = 0.38; // wide scatter
+    const minSpread = 0.055; // narrow focused salvo
+    const spreadAngle = THREE.MathUtils.lerp(maxSpread, minSpread, chargeClamped);
+
+    // Launch Ballistics Parameters
+    const gravity = 18.0;
+    const alpha = 0.26; // Launch elevation angle ~15 degrees
+    const cosA = Math.cos(alpha);
+    const sinA = Math.sin(alpha);
+    const y0 = 2.0;
+    const muzzleSpeed = Math.sqrt((gravity * range * range) / (2 * cosA * cosA * (y0 + range * (sinA / cosA))));
+
+    const right = playerShip.getRightVector();
+    const broadsideDir = side === 'port' ? right.clone().negate() : right.clone();
+    const forward = playerShip.getForwardVector();
+    const shipCenter = playerShip.position;
+    const heave = (typeof playerShip.heave === 'number' && !isNaN(playerShip.heave)) ? playerShip.heave : 0;
+
+    // Check if an enemy ship is in the impact area (Lock-on target feedback)
+    let isTargetLocked = false;
+    const activeEnemies = Array.isArray(enemies) ? enemies : (enemies ? [enemies] : []);
+    for (const enemy of activeEnemies) {
+      if (enemy && enemy.ship && !enemy.ship.isSinking) {
+        const toEnemy = enemy.ship.position.clone().sub(shipCenter);
+        const dist = toEnemy.length();
+        const latDot = toEnemy.clone().normalize().dot(broadsideDir);
+        const angleDiff = Math.acos(THREE.MathUtils.clamp(latDot, -1, 1));
+        if (angleDiff <= spreadAngle * 1.35 && Math.abs(dist - range) < 20.0) {
+          isTargetLocked = true;
+          break;
+        }
+      }
+    }
+
+    // Dynamic Visual Styling: Golden Yellow normally, Fiery Red when locked on target!
+    if (isTargetLocked) {
+      this.aimSectorMat.color.setHex(0xff3d00);
+      this.aimSectorMat.opacity = 0.42;
+      this.aimImpactLineMat.color.setHex(0xff1744);
+      this.aimReticleMat.color.setHex(0xff1744);
+      this.aimEdgeMat.color.setHex(0xff5722);
+    } else {
+      this.aimSectorMat.color.setHex(0xffeb3b);
+      this.aimSectorMat.opacity = 0.30;
+      this.aimImpactLineMat.color.setHex(0xffd54f);
+      this.aimReticleMat.color.setHex(0xffd54f);
+      this.aimEdgeMat.color.setHex(0xffd54f);
+    }
+
+    // 1. Update Yellow Transparent Water Impact Sector Mesh & Outer Impact Line
+    const sectorPosAttr = this.aimSectorMesh.geometry.attributes.position;
+    const impactPosAttr = this.aimImpactLine.geometry.attributes.position;
+    const N = this.sectorSegments;
+
+    for (let i = 0; i <= N; i++) {
+      const frac = i / N;
+      const angle = -spreadAngle + frac * (2 * spreadAngle);
+
+      // Radial direction for this segment
+      const dirX = broadsideDir.x * Math.cos(angle) + forward.x * Math.sin(angle);
+      const dirZ = broadsideDir.z * Math.cos(angle) + forward.z * Math.sin(angle);
+
+      // Inner point: along ship broadside hull
+      const innerOffset = (frac - 0.5) * 7.5;
+      const inX = shipCenter.x + broadsideDir.x * 3.4 + forward.x * innerOffset;
+      const inZ = shipCenter.z + broadsideDir.z * 3.4 + forward.z * innerOffset;
+      const inY = this.ocean.getWaveHeight(inX, inZ) + 0.12;
+
+      // Outer point: at exact impact range R
+      const outX = shipCenter.x + dirX * range;
+      const outZ = shipCenter.z + dirZ * range;
+      const outY = this.ocean.getWaveHeight(outX, outZ) + 0.15;
+
+      sectorPosAttr.setXYZ(i * 2 + 0, inX, inY, inZ);
+      sectorPosAttr.setXYZ(i * 2 + 1, outX, outY, outZ);
+
+      impactPosAttr.setXYZ(i, outX, outY, outZ);
+    }
+    sectorPosAttr.needsUpdate = true;
+    impactPosAttr.needsUpdate = true;
+
+    // 2. Update Central Long-Range Ballistic Trajectory Line
+    const trajectoryPoints = 36;
+    const totalFlightTime = range / (muzzleSpeed * cosA);
+    const dt = totalFlightTime / (trajectoryPoints - 1);
+    const centerPosAttr = this.aimCenterLine.geometry.attributes.position;
+
+    const startPos = shipCenter.clone().addScaledVector(broadsideDir, 2.8);
+    startPos.y = heave + y0;
+
+    for (let j = 0; j < trajectoryPoints; j++) {
+      const t = j * dt;
+      const curX = startPos.x + muzzleSpeed * cosA * broadsideDir.x * t;
+      const curY = startPos.y + (muzzleSpeed * sinA * t) - (0.5 * gravity * t * t);
+      const curZ = startPos.z + muzzleSpeed * cosA * broadsideDir.z * t;
+      centerPosAttr.setXYZ(j, curX, Math.max(curY, this.ocean.getWaveHeight(curX, curZ)), curZ);
+    }
+    centerPosAttr.needsUpdate = true;
+
+    // 3. Update Left and Right Edge Boundary Lines
+    const leftPosAttr = this.aimLeftLine.geometry.attributes.position;
+    const rightPosAttr = this.aimRightLine.geometry.attributes.position;
+
+    const leftDirX = broadsideDir.x * Math.cos(-spreadAngle) + forward.x * Math.sin(-spreadAngle);
+    const leftDirZ = broadsideDir.z * Math.cos(-spreadAngle) + forward.z * Math.sin(-spreadAngle);
+    const rightDirX = broadsideDir.x * Math.cos(spreadAngle) + forward.x * Math.sin(spreadAngle);
+    const rightDirZ = broadsideDir.z * Math.cos(spreadAngle) + forward.z * Math.sin(spreadAngle);
+
+    const startPosLeft = shipCenter.clone().addScaledVector(broadsideDir, 2.8).addScaledVector(forward, -3.5);
+    startPosLeft.y = heave + y0;
+    const startPosRight = shipCenter.clone().addScaledVector(broadsideDir, 2.8).addScaledVector(forward, 3.5);
+    startPosRight.y = heave + y0;
+
+    for (let j = 0; j < trajectoryPoints; j++) {
+      const t = j * dt;
+      const curY = startPos.y + (muzzleSpeed * sinA * t) - (0.5 * gravity * t * t);
+
+      const lx = startPosLeft.x + muzzleSpeed * cosA * leftDirX * t;
+      const lz = startPosLeft.z + muzzleSpeed * cosA * leftDirZ * t;
+      leftPosAttr.setXYZ(j, lx, Math.max(curY, this.ocean.getWaveHeight(lx, lz)), lz);
+
+      const rx = startPosRight.x + muzzleSpeed * cosA * rightDirX * t;
+      const rz = startPosRight.z + muzzleSpeed * cosA * rightDirZ * t;
+      rightPosAttr.setXYZ(j, rx, Math.max(curY, this.ocean.getWaveHeight(rx, rz)), rz);
+    }
+    leftPosAttr.needsUpdate = true;
+    rightPosAttr.needsUpdate = true;
+
+    // 4. Update Impact Reticle Marker on the Water
+    const centerImpactX = shipCenter.x + broadsideDir.x * range;
+    const centerImpactZ = shipCenter.z + broadsideDir.z * range;
+    const centerImpactY = this.ocean.getWaveHeight(centerImpactX, centerImpactZ) + 0.18;
+    this.aimReticle.position.set(centerImpactX, centerImpactY, centerImpactZ);
+
+    const pulse = 1.0 + Math.sin(performance.now() * 0.01) * 0.16;
+    this.aimReticle.scale.set(pulse, pulse, pulse);
+
+    this.aimGroup.visible = true;
+  }
+
+  hideAimSector() {
+    if (this.aimGroup) {
+      this.aimGroup.visible = false;
+    }
   }
 
   updateAimArc(playerShip, side, range = 55.0) {
-    if (!this.aimLine) return;
-    this.aimLine.visible = true;
-
-    const right = playerShip.getRightVector();
-    const aimDir = side === 'port' ? right.clone().negate() : right.clone();
-
-    // Aim slightly upward for parabolic trajectory
-    aimDir.y = 0.28;
-    aimDir.normalize();
-
-    if (!playerShip || !playerShip.position || isNaN(playerShip.position.x) || isNaN(playerShip.position.z)) return;
-    const heave = (typeof playerShip.heave === 'number' && !isNaN(playerShip.heave)) ? playerShip.heave : 0;
-
-    const startPos = playerShip.position.clone();
-    startPos.y = heave + 2.0;
-
-    const gravity = 18.0;
-    const muzzleSpeed = 38.0;
-    const velocity = aimDir.clone().multiplyScalar(muzzleSpeed);
-
-    const positions = this.aimLine.geometry.attributes.position;
-    const dt = 0.07;
-    let curPos = startPos.clone();
-    let curVel = velocity.clone();
-
-    for (let i = 0; i < 30; i++) {
-      positions.setXYZ(i, curPos.x, curPos.y, curPos.z);
-      curPos.addScaledVector(curVel, dt);
-      curVel.y -= gravity * dt;
-
-      // Stop arc at water level
-      if (curPos.y < this.ocean.getWaveHeight(curPos.x, curPos.z)) {
-        for (let j = i + 1; j < 30; j++) {
-          positions.setXYZ(j, curPos.x, curPos.y, curPos.z);
-        }
-        break;
-      }
-    }
-    positions.needsUpdate = true;
+    this.updateAimSector(playerShip, side, 0.15);
   }
 
   hideAimArc() {
-    if (this.aimLine) this.aimLine.visible = false;
+    this.hideAimSector();
   }
 
-  // Fire a broadside salvo of cannonballs
-  fireBroadside(firingShip, targetShip, side) {
+  // Fire a broadside salvo of cannonballs with dynamic charge-based velocity and narrow spread
+  fireBroadside(firingShip, targetShip, side, charge = 0) {
     const muzzlePositions = firingShip.getCannonOrigins(side);
     const right = firingShip.getRightVector();
-    const fireDir = side === 'port' ? right.clone().negate() : right.clone();
+    const broadsideDir = side === 'port' ? right.clone().negate() : right.clone();
+
+    const chargeClamped = Math.max(0, Math.min(1.0, charge));
+
+    // Range & exact ballistic speed matching the yellow target area
+    const minRange = 45.0;
+    const maxRange = 145.0;
+    const range = THREE.MathUtils.lerp(minRange, maxRange, chargeClamped);
+
+    const gravity = 18.0;
+    const alpha = 0.26;
+    const cosA = Math.cos(alpha);
+    const sinA = Math.sin(alpha);
+    const y0 = 2.0;
+    const baseMuzzleSpeed = Math.sqrt((gravity * range * range) / (2 * cosA * cosA * (y0 + range * (sinA / cosA))));
+
+    // Spread narrows from 0.08 rad down to 0.014 rad as charge increases
+    const spreadMax = THREE.MathUtils.lerp(0.08, 0.014, chargeClamped);
+    const damagePerBall = 20 + Math.round(chargeClamped * 7); // 20 to 27 damage per ball
 
     this.sound.playCannonBlast();
 
@@ -114,14 +336,15 @@ export class CombatSystem {
       setTimeout(() => {
         if (!firingShip.group.parent) return;
 
-        // Spread & elevation variation
-        const spread = (Math.random() - 0.5) * 0.08;
-        const elevation = 0.26 + (Math.random() - 0.5) * 0.04;
-        const ballDir = fireDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), spread);
+        // Narrowing spread matches the yellow transparent area
+        const spread = (Math.random() - 0.5) * 2.0 * spreadMax;
+        const elevation = alpha + (Math.random() - 0.5) * 0.02;
+
+        const ballDir = broadsideDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), spread);
         ballDir.y = elevation;
         ballDir.normalize();
 
-        const speed = 40.0 + (Math.random() - 0.5) * 4.0;
+        const speed = baseMuzzleSpeed + (Math.random() - 0.5) * 2.0;
         const velocity = ballDir.multiplyScalar(speed);
 
         // Spawn ball mesh
@@ -135,13 +358,15 @@ export class CombatSystem {
           firingShip,
           targetShip,
           alive: true,
-          age: 0
+          age: 0,
+          charge: chargeClamped,
+          damage: damagePerBall
         });
 
         // Muzzle smoke and flash
         this.spawnMuzzleFlash(origin);
-        this.spawnSmoke(origin, fireDir);
-      }, index * 90);
+        this.spawnSmoke(origin, broadsideDir);
+      }, index * 85);
     });
   }
 
@@ -261,10 +486,10 @@ export class CombatSystem {
         const tShip = targets[t];
         if (tShip && !tShip.isSinking) {
           const dist = b.mesh.position.distanceTo(tShip.position);
-          if (dist < 6.8 && b.mesh.position.y > waveH - 1.0 && b.mesh.position.y < waveH + 6.0) {
+          if (dist < 7.4 && b.mesh.position.y > waveH - 1.2 && b.mesh.position.y < waveH + 6.5) {
             // Hit Target!
             this.spawnSplinterExplosion(b.mesh.position);
-            tShip.takeDamage(20);
+            tShip.takeDamage(b.damage || 20);
             this.scene.remove(b.mesh);
             this.cannonballs.splice(i, 1);
             hit = true;

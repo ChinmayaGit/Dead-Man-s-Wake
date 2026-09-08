@@ -485,6 +485,24 @@
       filter: drop-shadow(0 0 5px rgba(255, 152, 0, 0.9));
     }
 
+    /* Long-Range Charging Aim State */
+    .broadside-btn.charging {
+      border-color: #fff176;
+      box-shadow: 0 0 28px 8px rgba(255, 235, 59, 0.95), inset 0 0 18px rgba(255, 213, 79, 0.85);
+      transform: scale(1.08);
+    }
+
+    .broadside-btn.charging .reload-timer {
+      color: #fff59d;
+      font-size: 14px;
+      text-shadow: 0 0 12px rgba(255, 245, 157, 1);
+    }
+
+    .broadside-btn.charging .cooldown-progress {
+      stroke: #fff59d;
+      filter: drop-shadow(0 0 10px rgba(255, 235, 59, 1));
+    }
+
     /* Flash pulse when reload completes */
     @keyframes reloadReadyPulse {
       0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 213, 79, 0.9); }
@@ -609,9 +627,27 @@
       pointer-events: auto;
       z-index: 10;
     }
+
+    #damage-vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      box-shadow: inset 0 0 100px rgba(255, 23, 68, 0.9);
+      opacity: 0;
+      transition: opacity 0.08s ease-out;
+      z-index: 90;
+    }
+
+    #damage-vignette.active {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
+  <div id="damage-vignette"></div>
   <div id="canvas-container"></div>
 
   <!-- Audio Mute Button -->
