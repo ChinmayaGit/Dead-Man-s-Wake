@@ -71,6 +71,7 @@ export class CombatSystem {
 
     this.aimSectorMesh = new THREE.Mesh(sectorGeo, this.aimSectorMat);
     this.aimSectorMesh.renderOrder = 3;
+    this.aimSectorMesh.frustumCulled = false;
     this.aimGroup.add(this.aimSectorMesh);
 
     // 2. Outer Impact Arc Line (where cannons will hit at maximum range)
@@ -81,10 +82,13 @@ export class CombatSystem {
       color: 0xffeb3b,
       linewidth: 3,
       transparent: true,
-      opacity: 0.85
+      opacity: 0.85,
+      depthTest: true,
+      depthWrite: false
     });
     this.aimImpactLine = new THREE.Line(impactGeo, this.aimImpactLineMat);
     this.aimImpactLine.renderOrder = 4;
+    this.aimImpactLine.frustumCulled = false;
     this.aimGroup.add(this.aimImpactLine);
 
     // 3. Central Long-Range Ballistic Trajectory Line
@@ -106,10 +110,13 @@ export class CombatSystem {
       vertexColors: true,
       linewidth: 3,
       transparent: true,
-      opacity: 0.95
+      opacity: 0.95,
+      depthTest: true,
+      depthWrite: false
     });
     this.aimCenterLine = new THREE.Line(centerGeo, this.aimCenterLineMat);
     this.aimCenterLine.renderOrder = 5;
+    this.aimCenterLine.frustumCulled = false;
     this.aimGroup.add(this.aimCenterLine);
 
     // 4. Boundary Guide Lines (Left and Right edges of the narrow cone)
@@ -121,12 +128,16 @@ export class CombatSystem {
       color: 0xffd54f,
       linewidth: 1.5,
       transparent: true,
-      opacity: 0.65
+      opacity: 0.65,
+      depthTest: true,
+      depthWrite: false
     });
     this.aimLeftLine = new THREE.Line(edgeGeoL, this.aimEdgeMat);
     this.aimRightLine = new THREE.Line(edgeGeoR, this.aimEdgeMat);
     this.aimLeftLine.renderOrder = 4;
     this.aimRightLine.renderOrder = 4;
+    this.aimLeftLine.frustumCulled = false;
+    this.aimRightLine.frustumCulled = false;
     this.aimGroup.add(this.aimLeftLine);
     this.aimGroup.add(this.aimRightLine);
 
@@ -138,11 +149,15 @@ export class CombatSystem {
       transparent: true,
       opacity: 0.85,
       side: THREE.DoubleSide,
+      depthTest: true,
       depthWrite: false
     });
     this.aimReticle = new THREE.Mesh(reticleGeo, this.aimReticleMat);
     this.aimReticle.renderOrder = 6;
+    this.aimReticle.frustumCulled = false;
     this.aimGroup.add(this.aimReticle);
+
+    this.aimGroup.frustumCulled = false;
 
     // Backward compatibility
     this.aimLine = this.aimCenterLine;
@@ -238,12 +253,12 @@ export class CombatSystem {
       const innerOffset = (frac - 0.5) * 7.5;
       const inX = shipCenter.x + broadsideDir.x * 3.4 + forward.x * innerOffset;
       const inZ = shipCenter.z + broadsideDir.z * 3.4 + forward.z * innerOffset;
-      const inY = this.ocean.getWaveHeight(inX, inZ) + 0.12;
+      const inY = this.ocean.getWaveHeight(inX, inZ) + 0.25;
 
       // Outer point: at exact impact range R
       const outX = shipCenter.x + dirX * range;
       const outZ = shipCenter.z + dirZ * range;
-      const outY = this.ocean.getWaveHeight(outX, outZ) + 0.15;
+      const outY = this.ocean.getWaveHeight(outX, outZ) + 0.35;
 
       sectorPosAttr.setXYZ(i * 2 + 0, inX, inY, inZ);
       sectorPosAttr.setXYZ(i * 2 + 1, outX, outY, outZ);
@@ -252,6 +267,8 @@ export class CombatSystem {
     }
     sectorPosAttr.needsUpdate = true;
     impactPosAttr.needsUpdate = true;
+    if (this.aimSectorMesh.geometry.computeBoundingSphere) this.aimSectorMesh.geometry.computeBoundingSphere();
+    if (this.aimImpactLine.geometry.computeBoundingSphere) this.aimImpactLine.geometry.computeBoundingSphere();
 
     // 2. Update Central Long-Range Ballistic Trajectory Line
     const trajectoryPoints = 36;
@@ -267,9 +284,10 @@ export class CombatSystem {
       const curX = startPos.x + muzzleSpeed * cosA * broadsideDir.x * t;
       const curY = startPos.y + (muzzleSpeed * sinA * t) - (0.5 * gravity * t * t);
       const curZ = startPos.z + muzzleSpeed * cosA * broadsideDir.z * t;
-      centerPosAttr.setXYZ(j, curX, Math.max(curY, this.ocean.getWaveHeight(curX, curZ)), curZ);
+      centerPosAttr.setXYZ(j, curX, Math.max(curY, this.ocean.getWaveHeight(curX, curZ) + 0.35), curZ);
     }
     centerPosAttr.needsUpdate = true;
+    if (this.aimCenterLine.geometry.computeBoundingSphere) this.aimCenterLine.geometry.computeBoundingSphere();
 
     // 3. Update Left and Right Edge Boundary Lines
     const leftPosAttr = this.aimLeftLine.geometry.attributes.position;
@@ -291,14 +309,16 @@ export class CombatSystem {
 
       const lx = startPosLeft.x + muzzleSpeed * cosA * leftDirX * t;
       const lz = startPosLeft.z + muzzleSpeed * cosA * leftDirZ * t;
-      leftPosAttr.setXYZ(j, lx, Math.max(curY, this.ocean.getWaveHeight(lx, lz)), lz);
+      leftPosAttr.setXYZ(j, lx, Math.max(curY, this.ocean.getWaveHeight(lx, lz) + 0.35), lz);
 
       const rx = startPosRight.x + muzzleSpeed * cosA * rightDirX * t;
       const rz = startPosRight.z + muzzleSpeed * cosA * rightDirZ * t;
-      rightPosAttr.setXYZ(j, rx, Math.max(curY, this.ocean.getWaveHeight(rx, rz)), rz);
+      rightPosAttr.setXYZ(j, rx, Math.max(curY, this.ocean.getWaveHeight(rx, rz) + 0.35), rz);
     }
     leftPosAttr.needsUpdate = true;
     rightPosAttr.needsUpdate = true;
+    if (this.aimLeftLine.geometry.computeBoundingSphere) this.aimLeftLine.geometry.computeBoundingSphere();
+    if (this.aimRightLine.geometry.computeBoundingSphere) this.aimRightLine.geometry.computeBoundingSphere();
 
     // 4. Update Impact Reticle Marker on the Water
     // If an enemy is on the yellow line, reticle highlights that enemy; otherwise marks the end circle!

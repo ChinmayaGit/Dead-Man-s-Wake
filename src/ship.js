@@ -99,6 +99,16 @@ export class Ship {
 
     // Wake particle trail
     this.initWakeParticles();
+
+    // Tactical Dodge Dash / Fast Surge state
+    this.dodgeDash = {
+      active: false,
+      elapsed: 0,
+      duration: 0.28,
+      totalDistance: 0,
+      lastProgress: 0,
+      directionVector: new THREE.Vector3()
+    };
   }
 
   buildFallbackShip() {
@@ -340,6 +350,41 @@ export class Ship {
     this.position.x += forward.x * this.speed * delta;
     this.position.z += forward.z * this.speed * delta;
 
+    // Tactical Dodge Dash Animation (High-speed animated surge through water)
+    let dashPitch = 0;
+    if (this.dodgeDash && this.dodgeDash.active) {
+      this.dodgeDash.elapsed += delta;
+      const t = Math.min(1.0, this.dodgeDash.elapsed / this.dodgeDash.duration);
+      // Cubic ease-out: 1 - (1 - t)^3 for explosive initial burst decelerating into the waves
+      const easeProgress = 1.0 - Math.pow(1.0 - t, 3);
+      const stepFraction = easeProgress - this.dodgeDash.lastProgress;
+      this.dodgeDash.lastProgress = easeProgress;
+
+      const stepDist = this.dodgeDash.totalDistance * stepFraction;
+      this.position.x += this.dodgeDash.directionVector.x * stepDist;
+      this.position.z += this.dodgeDash.directionVector.z * stepDist;
+
+      // Dynamic surge pitch: bow rises when surging forward, stern digs in on reverse
+      const remainingRatio = 1.0 - t;
+      dashPitch = (this.dodgeDash.totalDistance > 0 ? -0.12 : 0.08) * remainingRatio;
+
+      // Continuous wake spray along the fast dash trajectory
+      if (this.wakeHistory) {
+        const surgePoint = this.position.clone().sub(this.dodgeDash.directionVector.clone().multiplyScalar(3.5));
+        for (let k = 0; k < 3; k++) {
+          const offX = (Math.random() - 0.5) * 4.0;
+          const offZ = (Math.random() - 0.5) * 4.0;
+          this.wakeHistory.unshift({
+            pos: surgePoint.clone().add(new THREE.Vector3(offX, 0, offZ))
+          });
+        }
+      }
+
+      if (t >= 1.0) {
+        this.dodgeDash.active = false;
+      }
+    }
+
     // 3. Authentic Buoyancy, Wave Pitch & Centrifugal Turn Banking (from _WaterInfluencePhysics.lua)
     const bowPos = this.position.clone().addScaledVector(forward, 7.5);
     const sternPos = this.position.clone().addScaledVector(forward, -7.5);
@@ -353,8 +398,8 @@ export class Ship {
     const hStbd = this.ocean.getWaveHeight(stbdPos.x, stbdPos.z);
 
     const targetPitch = THREE.MathUtils.clamp(
-      Math.atan2(hBow - hStern, 16.0),
-      -0.35, 0.35
+      Math.atan2(hBow - hStern, 16.0) + dashPitch,
+      -0.42, 0.42
     );
 
     const waveRoll = Math.atan2(hStbd - hPort, 6.5);
@@ -457,6 +502,39 @@ export class Ship {
       origins.push(pos);
     });
     return origins;
+  }
+
+  dodgeBurst(direction = 1) {
+    if (this.isSinking) return;
+    const forward = this.getForwardVector();
+    // direction > 0: Forward Surge (+16m)
+    // direction < 0: Backward / Reverse Brake (-13m)
+    const distance = direction > 0 ? 16.0 : -13.0;
+
+    // Trigger high-speed animated surge through the water
+    this.dodgeDash.active = true;
+    this.dodgeDash.elapsed = 0;
+    this.dodgeDash.duration = 0.28; // ~280ms duration
+    this.dodgeDash.totalDistance = distance;
+    this.dodgeDash.lastProgress = 0;
+    this.dodgeDash.directionVector.copy(forward);
+
+    if (direction > 0) {
+      this.speed = Math.max(this.speed, 22.0);
+    } else {
+      this.speed = Math.max(0, this.speed * 0.15);
+    }
+
+    // Initial splash foam burst
+    if (this.wakeHistory) {
+      for (let k = 0; k < 6; k++) {
+        const offX = (Math.random() - 0.5) * 4.0;
+        const offZ = (Math.random() - 0.5) * 4.0;
+        this.wakeHistory.unshift({
+          pos: this.position.clone().add(new THREE.Vector3(offX, 0, offZ))
+        });
+      }
+    }
   }
 
   updateGroupTransform() {

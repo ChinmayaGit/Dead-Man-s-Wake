@@ -47,6 +47,9 @@ export class MultiplayerManager {
   hostGame(onCodeGenerated) {
     this.disconnect();
     this.role = 'host';
+    if (this.game && this.game.hideAllBotEnemies) {
+      this.game.hideAllBotEnemies();
+    }
     const rawCode = this.generateRoomCode();
     this.roomCode = rawCode;
     const peerId = `dmw-${rawCode.toLowerCase()}`;
@@ -87,6 +90,9 @@ export class MultiplayerManager {
   joinGame(code) {
     this.disconnect();
     this.role = 'client';
+    if (this.game && this.game.hideAllBotEnemies) {
+      this.game.hideAllBotEnemies();
+    }
     const cleanCode = code.trim().toUpperCase();
     this.roomCode = cleanCode;
     const targetPeerId = `dmw-${cleanCode.toLowerCase()}`;
@@ -217,24 +223,65 @@ export class MultiplayerManager {
         this.game.playerShip.takeDamage(data.damage || 15);
         this.game.triggerCameraShake(0.8, 0.4);
         this.game.triggerDamageFeedback(data.damage || 15);
+        if (this.game.sound && this.game.sound.playHullImpact) {
+          this.game.sound.playHullImpact();
+        }
       }
     } else if (data.type === 'emote') {
       this.showEmoteBanner(data.icon, data.text);
+    } else if (data.type === 'start_pvp_battle') {
+      console.log('⚔️ [P2P] Peer requested start PvP battle');
+      if (this.game) {
+        this.game.startMultiplayerBattle(false);
+      }
+    } else if (data.type === 'pvp_defeat_notify') {
+      console.log('🏆 [P2P] Peer reported defeat -> Local Victory!');
+      if (this.remoteShip) {
+        this.remoteShip.health = 0;
+        this.remoteShip.isSinking = true;
+      }
+      if (this.game) {
+        this.game.handlePvPBattleEnd('victory');
+      }
+    } else if (data.type === 'pvp_victory_notify') {
+      console.log('☠️ [P2P] Peer reported victory -> Local Defeat!');
+      if (this.game && this.game.playerShip) {
+        this.game.playerShip.health = 0;
+        this.game.playerShip.isSinking = true;
+      }
+      if (this.game) {
+        this.game.handlePvPBattleEnd('defeat');
+      }
+    } else if (data.type === 'pvp_rematch_request') {
+      console.log('⚔️ [P2P] Peer requested Rematch');
+      if (this.game) {
+        this.game.handleRematchRequestedByPeer();
+      }
+    } else if (data.type === 'pvp_rematch_start') {
+      console.log('⚔️ [P2P] Peer confirmed Rematch Start');
+      if (this.game) {
+        this.game.restartPvPBattle(false);
+      }
     }
   }
 
   spawnRemoteShip() {
     if (this.remoteShip) return;
-    console.log('⛵ [P2P] Spawning Remote Player Ship into world...');
-    // Remote ship uses 'ship-pirate-medium.glb'
-    this.remoteShip = new Ship(this.game.scene, this.game.ocean, false, 'ship-pirate-medium.glb', 120);
+    if (this.game && this.game.hideAllBotEnemies) {
+      this.game.hideAllBotEnemies();
+    }
+    console.log('⛵ [P2P] Spawning Remote Rival Player Ship into duel arena...');
+    // Remote ship uses 'ship-pirate-large.glb' with 100 HP for fair flagship duel
+    this.remoteShip = new Ship(this.game.scene, this.game.ocean, false, 'ship-pirate-large.glb', 100);
     this.remoteShip.isRemotePlayer = true;
-    this.remoteShip.name = (this.role === 'host') ? 'Captain 2' : 'Captain 1 (Host)';
+    this.remoteShip.name = (this.role === 'host') ? 'Challenger (P2P)' : 'Host Fleet (P2P)';
 
-    // Spawn 22 meters off player's starboard beam
-    const spawnOffset = this.game.playerShip.getRightVector().multiplyScalar(22);
-    this.remoteShip.position.copy(this.game.playerShip.position).add(spawnOffset);
-    this.remoteShip.heading = this.game.playerShip.heading;
+    // Initial duel arena placement:
+    // Host starts at (0, 0, -45) facing South; Client at (0, 0, 45) facing North
+    const spawnZ = (this.role === 'host') ? 45 : -45;
+    const spawnHeading = (this.role === 'host') ? Math.PI : 0;
+    this.remoteShip.position.set(0, 0, spawnZ);
+    this.remoteShip.heading = spawnHeading;
     this.remoteTargetPos.copy(this.remoteShip.position);
 
     // Create 3D Nameplate & Health Bar above remote ship
@@ -285,7 +332,7 @@ export class MultiplayerManager {
     ctx.font = 'bold 22px sans-serif';
     ctx.fillStyle = '#ffeb3b';
     ctx.textAlign = 'center';
-    const displayName = (this.role === 'host') ? '⚔️ Crewmate (P2P)' : '👑 Fleet Host (P2P)';
+    const displayName = (this.role === 'host') ? '⚔️ Challenger (P2P)' : '👑 Fleet Host (P2P)';
     ctx.fillText(displayName, 150, 36);
 
     // HP Bar background

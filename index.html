@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="screen-orientation" content="landscape" />
+  <meta name="x5-orientation" content="landscape" />
   <title>Dead-Man-s-Wake</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☠️</text></svg>" />
   <script>
@@ -172,6 +174,43 @@
     @keyframes alertDiamondPulse {
       0% { transform: scale(0.85); opacity: 0.75; }
       100% { transform: scale(1.25); opacity: 1.0; filter: drop-shadow(0 0 10px rgba(255, 23, 68, 1)); }
+    }
+
+    .enemy-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .enemy-lock-btn {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      background: rgba(183, 28, 28, 0.9);
+      color: #ffffff;
+      border: 1px solid #ff1744;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.2s ease;
+      user-select: none;
+      box-shadow: 0 0 8px rgba(255, 23, 68, 0.4);
+    }
+
+    .enemy-lock-btn:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 12px rgba(255, 23, 68, 0.8);
+      border-color: #ffd54f;
+    }
+
+    .enemy-lock-btn.unlocked {
+      background: rgba(45, 55, 65, 0.85);
+      color: #cfd8dc;
+      border-color: #78909c;
+      box-shadow: none;
     }
 
     .enemy-badge {
@@ -402,10 +441,11 @@
       color: #fff;
     }
 
-    /* Broadside Combat Buttons */
-    #combat-panel {
+    /* Broadside Combat Buttons & Widgets */
+    .broadside-widget {
       display: flex;
-      gap: 22px;
+      align-items: center;
+      justify-content: center;
       pointer-events: auto;
     }
 
@@ -431,12 +471,17 @@
       cursor: pointer;
       color: #ffecd1;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), inset 0 0 14px rgba(255, 100, 50, 0.25);
-      transition: transform 0.1s ease, border-color 0.2s ease, filter 0.2s ease;
+      transition: transform 0.1s ease, border-color 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
       position: relative;
       padding: 0;
       overflow: visible;
       user-select: none;
       -webkit-user-select: none;
+    }
+
+    .broadside-btn.is-ready {
+      border-color: #ffd54f;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 14px rgba(255, 213, 79, 0.4), inset 0 0 14px rgba(129, 199, 132, 0.3);
     }
 
     .broadside-btn:hover:not(.reloading) {
@@ -465,8 +510,27 @@
       line-height: 1.15;
     }
 
+    .cannon-header-row {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      margin-bottom: 2px;
+    }
+
+    .cannon-dir-arrow {
+      font-size: 13px;
+      color: #ffd54f;
+      font-weight: 900;
+      text-shadow: 0 0 6px rgba(255, 213, 79, 0.8);
+    }
+
+    .cannon-icon {
+      font-size: 13px;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+    }
+
     .btn-label {
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 800;
       letter-spacing: 1px;
       color: #ffecd1;
@@ -474,11 +538,11 @@
     }
 
     .reload-timer {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 900;
       font-family: 'Courier New', monospace, sans-serif;
       color: #81c784;
-      margin: 2px 0;
+      margin: 1px 0;
       text-shadow: 0 0 8px rgba(129, 199, 132, 0.8);
       transition: color 0.2s ease;
       letter-spacing: 0.5px;
@@ -490,9 +554,167 @@
     }
 
     .broadside-btn .key-hint {
-      font-size: 10px;
+      font-size: 9.5px;
       color: #d19a66;
       font-weight: bold;
+    }
+
+    /* Global Utility */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Tactical Dodge / Evade Controls */
+    .dodge-widget {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+    }
+
+    .dodge-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dodge-btn {
+      background: radial-gradient(circle at 35% 35%, #153243 0%, #08141e 100%);
+      border: 2px solid #00b4d8;
+      border-radius: 50%;
+      width: 68px;
+      height: 68px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #caf0f8;
+      box-shadow: 0 5px 18px rgba(0, 0, 0, 0.8), inset 0 0 12px rgba(0, 180, 216, 0.3);
+      transition: transform 0.1s ease, border-color 0.2s ease, filter 0.2s ease;
+      position: relative;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    .dodge-btn:hover:not(.on-cooldown) {
+      transform: scale(1.06);
+      border-color: #90e0ef;
+      box-shadow: 0 6px 20px rgba(0, 180, 216, 0.5);
+    }
+
+    .dodge-btn:active:not(.on-cooldown) {
+      transform: scale(0.92);
+    }
+
+    .dodge-btn.on-cooldown {
+      cursor: not-allowed;
+      filter: brightness(0.6) saturate(0.5);
+      border-color: #37474f;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+    }
+
+    .dodge-icon {
+      font-size: 18px;
+      line-height: 1;
+      display: inline-block;
+    }
+
+    /* Direction-flipped 💨 emoji for forward vs backward */
+    .dodge-icon.fwd-icon {
+      transform: scaleX(-1);
+    }
+
+    .dodge-icon.back-icon {
+      transform: scaleX(1);
+    }
+
+    .dodge-label {
+      font-size: 8.5px;
+      font-weight: 900;
+      letter-spacing: 0.6px;
+      margin-top: 1px;
+      color: #e0f7fa;
+    }
+
+    .dodge-timer {
+      font-size: 10.5px;
+      font-weight: 800;
+      color: #48cae4;
+      font-family: 'Courier New', monospace, sans-serif;
+    }
+
+    .dodge-btn.on-cooldown .dodge-timer {
+      color: #ffb74d;
+    }
+
+    .dodge-btn .key-hint {
+      font-size: 8px;
+      color: #80deea;
+      font-weight: bold;
+    }
+
+    /* Steering Buttons Group */
+    .steer-btn-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .steer-btn-group.hidden {
+      display: none !important;
+    }
+
+    #helm-wheel.hidden {
+      display: none !important;
+    }
+
+    .steer-btn-action {
+      background: radial-gradient(circle at 40% 40%, #3e2723 0%, #1a0808 100%);
+      border: 2px solid #a68449;
+      border-radius: 10px;
+      color: #ffd54f;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      min-width: 58px;
+      min-height: 58px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.7);
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+      transition: transform 0.1s, background 0.15s, border-color 0.15s;
+    }
+
+    .steer-btn-action:active, .steer-btn-action.active {
+      transform: scale(0.92);
+      background: radial-gradient(circle at 40% 40%, #5d4037 0%, #2e1609 100%);
+      border-color: #ffd54f;
+      box-shadow: 0 0 14px rgba(255, 213, 79, 0.6);
+    }
+
+    .steer-btn-action .steer-icon {
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .steer-btn-action .steer-label {
+      font-size: 10px;
+      letter-spacing: 0.8px;
+    }
+
+    .steer-btn-action .steer-sub {
+      font-size: 9px;
+      color: #bcaaa4;
     }
 
     /* Circular SVG Timer Ring */
@@ -1386,6 +1608,15 @@
       color: #fff;
     }
 
+    .cust-btn.steer-toggle {
+      background: #4a2810;
+      border: 1px solid #ffd54f;
+      color: #ffd54f;
+    }
+    .cust-btn.steer-toggle:hover {
+      background: #6d3b19;
+    }
+
     /* Visual indicators during HUD Customizing */
     body.hud-editing .hud-customizable {
       outline: 2px dashed #ffd54f !important;
@@ -1610,35 +1841,98 @@
       }
 
       /* Compact Broadside Cannon Buttons */
-      #combat-panel {
-        gap: 8px;
+      #port-cannon-panel, #starboard-cannon-panel {
+        gap: 6px;
       }
 
       .broadside-wrapper {
-        width: 56px;
-        height: 56px;
+        width: 58px;
+        height: 58px;
       }
 
       .broadside-btn {
-        width: 56px;
-        height: 56px;
+        width: 58px;
+        height: 58px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8);
       }
 
       .cooldown-svg {
-        width: 60px;
-        height: 60px;
+        width: 62px;
+        height: 62px;
         top: -2px;
         left: -2px;
       }
 
+      .cannon-header-row {
+        gap: 2px;
+        margin-bottom: 1px;
+      }
+
+      .cannon-dir-arrow {
+        font-size: 10px;
+      }
+
+      .cannon-icon {
+        font-size: 10px;
+      }
+
       .btn-label {
-        font-size: 8.5px;
+        font-size: 8px;
       }
 
       .reload-timer {
-        font-size: 9px;
-        margin: 1px 0;
+        font-size: 8.5px;
+        margin: 0;
+      }
+
+      .broadside-btn .key-hint {
+        font-size: 7.5px;
+      }
+
+      /* Compact Tactical Dodge Buttons */
+      .dodge-wrapper {
+        gap: 6px;
+      }
+
+      .dodge-btn {
+        width: 48px;
+        height: 48px;
+      }
+
+      .dodge-icon {
+        font-size: 14px;
+      }
+
+      .dodge-label {
+        font-size: 7px;
+      }
+
+      .dodge-timer {
+        font-size: 8px;
+      }
+
+      .dodge-btn .key-hint {
+        font-size: 6.5px;
+      }
+
+      /* Compact Steering Buttons */
+      .steer-btn-group {
+        gap: 5px;
+      }
+
+      .steer-btn-action {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 5px 8px;
+        font-size: 11px;
+      }
+
+      .steer-btn-action .steer-icon {
+        font-size: 12px;
+      }
+
+      .steer-btn-action .steer-label {
+        font-size: 8px;
       }
 
       .broadside-btn .key-hint {
@@ -2025,6 +2319,279 @@
       text-transform: uppercase;
       margin-left: 6px;
     }
+
+    /* PvP Battle End Modal (Victory / Defeat) */
+    .pvp-end-card {
+      background: linear-gradient(180deg, rgba(28, 18, 12, 0.98) 0%, rgba(14, 8, 5, 0.99) 100%);
+      border: 3px solid #ffd54f;
+      border-radius: 20px;
+      padding: 30px 36px;
+      max-width: 480px;
+      width: 90vw;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.95), 0 0 32px rgba(255, 213, 79, 0.35);
+      text-align: center;
+      user-select: none;
+      animation: modalFadeIn 0.35s ease-out;
+    }
+
+    .pvp-end-badge {
+      display: inline-block;
+      padding: 6px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 1.5px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .pvp-end-badge.victory {
+      background: linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%);
+      color: #ffd54f;
+      border: 1.5px solid #81c784;
+      box-shadow: 0 0 18px rgba(129, 199, 132, 0.6);
+    }
+
+    .pvp-end-badge.defeat {
+      background: linear-gradient(180deg, #c62828 0%, #8e0000 100%);
+      color: #fff;
+      border: 1.5px solid #ef5350;
+      box-shadow: 0 0 18px rgba(239, 83, 80, 0.6);
+    }
+
+    .pvp-end-title {
+      font-family: 'Pirata One', cursive, serif;
+      font-size: 38px;
+      margin: 0 0 8px 0;
+      color: #ffd54f;
+      text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9);
+      letter-spacing: 1.5px;
+    }
+
+    .pvp-end-subtitle {
+      font-size: 13.5px;
+      color: #d7ccc8;
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .pvp-stats-box {
+      background: rgba(10, 6, 4, 0.85);
+      border: 1px solid #5d4037;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      text-align: left;
+    }
+
+    .pvp-stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #bcaaa4;
+    }
+
+    .pvp-end-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Landscape Optimization for Level Selection & Main Menu */
+    @media (orientation: landscape) and (max-height: 620px) {
+      .splash-card {
+        padding: 16px 28px !important;
+        max-width: 780px !important;
+        max-height: 96vh !important;
+      }
+      .splash-title {
+        font-size: 26px !important;
+        margin-bottom: 2px !important;
+      }
+      .splash-subtitle {
+        font-size: 11px !important;
+        margin-bottom: 12px !important;
+      }
+      .main-menu-options {
+        flex-direction: row !important;
+        justify-content: center !important;
+        gap: 12px !important;
+        margin-top: 12px !important;
+      }
+      .main-menu-btn {
+        padding: 10px 18px !important;
+        font-size: 14px !important;
+        max-width: 210px !important;
+      }
+      .difficulty-title {
+        font-size: 20px !important;
+        margin-bottom: 4px !important;
+      }
+      .difficulty-subtitle {
+        display: none !important;
+      }
+      .difficulty-cards {
+        flex-direction: row !important;
+        gap: 10px !important;
+        margin-bottom: 10px !important;
+      }
+      .difficulty-card {
+        padding: 10px 12px !important;
+        flex: 1 !important;
+        gap: 4px !important;
+      }
+      .diff-name {
+        font-size: 14px !important;
+      }
+      .diff-stats {
+        font-size: 10px !important;
+        gap: 2px !important;
+      }
+      .diff-desc {
+        display: none !important;
+      }
+      .diff-select-btn {
+        padding: 6px 10px !important;
+        font-size: 11px !important;
+        margin-top: 4px !important;
+      }
+      .secondary-back-btn {
+        padding: 6px 14px !important;
+        font-size: 11.5px !important;
+      }
+    }
+
+    /* Enforce Landscape Mode Overlay */
+    #orientation-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(circle at center, rgba(32, 20, 14, 0.98) 0%, rgba(10, 6, 4, 0.99) 100%);
+      z-index: 1000000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+      backdrop-filter: blur(8px);
+    }
+
+    /* Automatically display overlay whenever phone/tablet is held in portrait */
+    @media screen and (orientation: portrait) and (max-width: 1024px) {
+      #orientation-overlay {
+        display: flex !important;
+      }
+    }
+
+    .orientation-box {
+      background: linear-gradient(180deg, rgba(38, 26, 18, 0.94) 0%, rgba(18, 12, 8, 0.98) 100%);
+      border: 2px solid #d4af37;
+      border-radius: 16px;
+      padding: 32px 28px;
+      max-width: 380px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 30px rgba(212, 175, 55, 0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .rotate-phone-anim {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: rgba(212, 175, 55, 0.15);
+      border: 2px dashed #d4af37;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: rotatePhonePulse 2.2s infinite ease-in-out;
+    }
+
+    .phone-icon-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .rotate-phone-icon {
+      font-size: 38px;
+      display: inline-block;
+      animation: rotatePhone 2.2s infinite ease-in-out;
+    }
+
+    .rotate-arrow-icon {
+      position: absolute;
+      font-size: 20px;
+      top: -8px;
+      right: -12px;
+      animation: spin 3s infinite linear;
+    }
+
+    @keyframes rotatePhone {
+      0%, 15% { transform: rotate(0deg); }
+      50%, 85% { transform: rotate(-90deg); }
+      100% { transform: rotate(0deg); }
+    }
+
+    @keyframes rotatePhonePulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 10px rgba(212, 175, 55, 0.2); }
+      50% { transform: scale(1.08); box-shadow: 0 0 25px rgba(212, 175, 55, 0.5); }
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+
+    .orientation-title {
+      font-size: 20px;
+      font-weight: 900;
+      color: #ffd54f;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin: 0;
+      text-shadow: 0 0 12px rgba(255, 213, 79, 0.5);
+    }
+
+    .orientation-desc {
+      font-size: 13.5px;
+      color: #cfd8dc;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .orientation-desc strong {
+      color: #ffca28;
+    }
+
+    .btn-landscape-fullscreen {
+      background: linear-gradient(180deg, #d32f2f 0%, #8b0000 100%);
+      color: #fff;
+      border: 2px solid #ffb300;
+      border-radius: 25px;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(211, 47, 47, 0.5);
+      transition: all 0.2s ease;
+      margin-top: 6px;
+    }
+
+    .btn-landscape-fullscreen:hover {
+      transform: scale(1.05);
+      border-color: #ffd54f;
+      box-shadow: 0 8px 24px rgba(255, 179, 0, 0.6);
+    }
   </style>
 </head>
 <body>
@@ -2034,19 +2601,20 @@
   <!-- In-Game P2P Status & Quick Emotes -->
   <div id="p2p-hud-widget" class="hud-panel hidden">
     <span class="p2p-dot">🟢</span>
-    <span id="p2p-crew-status">Crew: Online</span>
-    <button id="btn-p2p-emote-ahoy" class="p2p-emote-btn" title="Send Ahoy!">☠️</button>
-    <button id="btn-p2p-emote-attack" class="p2p-emote-btn" title="Send Attack!">⚔️</button>
-    <button id="btn-p2p-emote-follow" class="p2p-emote-btn" title="Send Follow!">🌊</button>
+    <span id="p2p-crew-status">⚔️ 1v1 DUEL</span>
+    <button id="btn-p2p-emote-ahoy" class="p2p-emote-btn" title="Surrender!">☠️</button>
+    <button id="btn-p2p-emote-attack" class="p2p-emote-btn" title="Prepare Broadside!">⚔️</button>
+    <button id="btn-p2p-emote-follow" class="p2p-emote-btn" title="Full Volley!">💥</button>
   </div>
 
   <!-- HUD Customizer Drag & Resize Toolbar -->
   <div id="hud-customizer-bar" class="hidden">
     <div class="customizer-info">
       <span class="customizer-badge">🎨 HUD EDIT MODE</span>
-      <span>Drag controls to move. Use <strong>[-]</strong> and <strong>[+]</strong> to resize.</span>
+      <span>Drag controls to move. Use <strong>[-]</strong> and <strong>[+]</strong> to resize without limits.</span>
     </div>
     <div class="customizer-actions">
+      <button id="btn-custom-steer-toggle" class="cust-btn steer-toggle" title="Switch steering style">☸️ Wheel</button>
       <button id="btn-custom-save" class="cust-btn save">💾 Save Layout</button>
       <button id="btn-custom-reset" class="cust-btn reset">🔄 Reset</button>
       <button id="btn-custom-close" class="cust-btn close">✕ Done</button>
@@ -2080,7 +2648,10 @@
             <span class="enemy-alert-diamond" id="enemy-diamond-icon">◆</span>
             <span class="status-title" id="enemy-ship-name" style="color: #ffcdd2;">HMS Defiance</span>
           </div>
-          <span class="enemy-badge" id="enemy-badge-val">ALERTED</span>
+          <div class="enemy-actions-row">
+            <button id="btn-enemy-lock-toggle" class="enemy-lock-btn locked" title="Toggle Target Lock [L]">🎯 LOCKED</button>
+            <span class="enemy-badge" id="enemy-badge-val">ALERTED</span>
+          </div>
         </div>
         <div class="hp-bar-container enemy-hp-container">
           <div id="enemy-hp-fill"></div>
@@ -2113,17 +2684,18 @@
 
 
 
-  <!-- Bottom HUD: Left = Steering Wheel, Center = Broadside Cannons, Right = Sail Speed -->
+  <!-- Bottom HUD: Helm Wheel/Buttons, Port Broadside, Tactical Dodge, Starboard Broadside, Sail Lever -->
   <div id="hud-bottom">
-    <!-- LEFT: Interactive Ship Helm Wheel & Steering -->
-    <div id="helm-container" class="hud-customizable" data-widget-title="HELM WHEEL">
+    <!-- LEFT: Interactive Ship Helm (Wheel or Left/Right Buttons) -->
+    <div id="helm-container" class="hud-customizable" data-widget-title="HELM / STEER">
+      <!-- Mode 1: Helm Wheel -->
       <svg id="helm-wheel" viewBox="0 0 100 100">
         <!-- Outer Rim -->
         <circle cx="50" cy="50" r="40" fill="none" stroke="#7a4b22" stroke-width="6" />
         <circle cx="50" cy="50" r="37" fill="none" stroke="#d4af37" stroke-width="1.5" />
         <!-- Hub -->
         <circle cx="50" cy="50" r="14" fill="#3d210b" stroke="#d4af37" stroke-width="3" />
-        <circle cx="50" cy="50" r="6" fill="#d4af37" />
+        <circle cx="50" cy="6" r="4" fill="#d4af37" />
         <!-- 8 Spokes -->
         <line x1="50" y1="10" x2="50" y2="90" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
         <line x1="10" y1="50" x2="90" y2="50" stroke="#7a4b22" stroke-width="4" stroke-linecap="round" />
@@ -2139,35 +2711,79 @@
         <circle cx="18" cy="82" r="4" fill="#d4af37" />
         <circle cx="82" cy="18" r="4" fill="#d4af37" />
       </svg>
-      <div style="font-size: 11px; color: #bcaaa4; font-weight: bold;">[ A / D ] STEER</div>
+      <!-- Mode 2: Left/Right Steer Buttons -->
+      <div id="steer-buttons-group" class="steer-btn-group hidden" style="display: none;">
+        <button id="btn-steer-left" class="steer-btn-action" title="Steer Left [A]">
+          <span class="steer-icon">◀</span>
+          <span class="steer-sub">[ A ]</span>
+        </button>
+        <button id="btn-steer-right" class="steer-btn-action" title="Steer Right [D]">
+          <span class="steer-icon">▶</span>
+          <span class="steer-sub">[ D ]</span>
+        </button>
+      </div>
+      <div id="helm-hint-label" style="font-size: 11px; color: #bcaaa4; font-weight: bold;">[ A / D ] STEER</div>
     </div>
 
-    <!-- CENTER: Broadside Cannons -->
-    <div id="combat-panel" class="hud-customizable" data-widget-title="CANNONS">
+    <!-- LEFT CANNON BROADSIDE (Independently customizable) -->
+    <div id="port-cannon-panel" class="hud-customizable broadside-widget" data-widget-title="LEFT CANNON">
       <div class="broadside-wrapper">
-        <button class="broadside-btn" id="btn-fire-port">
+        <button class="broadside-btn is-ready" id="btn-fire-port">
           <!-- Circular SVG Reload Progress -->
           <svg class="cooldown-svg" viewBox="0 0 100 100">
             <circle class="cooldown-track" cx="50" cy="50" r="45" />
             <circle class="cooldown-progress" id="ring-port" cx="50" cy="50" r="45" />
           </svg>
           <div class="btn-content">
-            <span class="btn-label">PORT</span>
+            <div class="cannon-header-row">
+              <span class="cannon-dir-arrow">◀</span>
+              <span class="cannon-icon">💣</span>
+            </div>
             <span class="reload-timer" id="timer-port">READY</span>
             <span class="key-hint">[ Q ]</span>
           </div>
         </button>
       </div>
+    </div>
 
+    <!-- BACKWARD DODGE BURST (Independently customizable) -->
+    <div id="dodge-back-panel" class="hud-customizable dodge-widget" data-widget-title="DODGE BACK">
+      <div class="dodge-wrapper">
+        <button id="btn-dodge-back" class="dodge-btn back" title="Instant Backward Dodge [B]">
+          <span class="dodge-icon back-icon">💨</span>
+          <span class="dodge-label">DODGE</span>
+          <span class="dodge-timer" id="timer-dodge-back">BACK</span>
+          <span class="key-hint">[ B ]</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- FORWARD DODGE SURGE (Independently customizable) -->
+    <div id="dodge-fwd-panel" class="hud-customizable dodge-widget" data-widget-title="DODGE FWD">
+      <div class="dodge-wrapper">
+        <button id="btn-dodge-fwd" class="dodge-btn fwd" title="Instant Forward Surge [Space / F]">
+          <span class="dodge-icon fwd-icon">💨</span>
+          <span class="dodge-label">DODGE</span>
+          <span class="dodge-timer" id="timer-dodge-fwd">FWD</span>
+          <span class="key-hint">[ SPACE ]</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT CANNON BROADSIDE (Independently customizable) -->
+    <div id="starboard-cannon-panel" class="hud-customizable broadside-widget" data-widget-title="RIGHT CANNON">
       <div class="broadside-wrapper">
-        <button class="broadside-btn" id="btn-fire-starboard">
+        <button class="broadside-btn is-ready" id="btn-fire-starboard">
           <!-- Circular SVG Reload Progress -->
           <svg class="cooldown-svg" viewBox="0 0 100 100">
             <circle class="cooldown-track" cx="50" cy="50" r="45" />
             <circle class="cooldown-progress" id="ring-starboard" cx="50" cy="50" r="45" />
           </svg>
           <div class="btn-content">
-            <span class="btn-label">STBD</span>
+            <div class="cannon-header-row">
+              <span class="cannon-icon">💣</span>
+              <span class="cannon-dir-arrow">▶</span>
+            </div>
             <span class="reload-timer" id="timer-starboard">READY</span>
             <span class="key-hint">[ E ]</span>
           </div>
@@ -2189,7 +2805,6 @@
       </div>
       <button class="sail-step-btn down" id="btn-sail-down" title="Sail Down / Stop (S)">▼ SAIL DOWN</button>
     </div>
-  </div>
   </div>
 
   <!-- Enemy Sunk Victory & Salvage Modal -->
@@ -2229,8 +2844,10 @@
   <!-- Splash / Main Menu Modal -->
   <div id="splash-modal">
     <div class="splash-card">
-      <h1 class="splash-title">Dead-Man-s-Wake</h1>
-      <p class="splash-subtitle">High Seas Naval Sandbox &bull; Caribbean Age of Sail</p>
+      <div id="splash-main-header">
+        <h1 class="splash-title">Dead-Man-s-Wake</h1>
+        <p class="splash-subtitle">High Seas Naval Sandbox &bull; Caribbean Age of Sail</p>
+      </div>
 
       <!-- Main View (3 Options) -->
       <div id="menu-main-view">
@@ -2255,10 +2872,9 @@
         </div>
       </div>
 
-      <!-- Difficulty Selection View (Appears when "Set Sails" is pressed) -->
+      <!-- Difficulty Selection View (Replaces Dead Man's Wake and its content, only showing the level) -->
       <div id="menu-difficulty-view" class="hidden">
-        <h2 class="difficulty-title">SELECT DIFFICULTY</h2>
-        <p class="difficulty-subtitle">Your chosen difficulty directly modifies cannon firepower and hull damage:</p>
+        <h2 class="difficulty-title">SELECT LEVEL</h2>
 
         <div class="difficulty-cards">
           <!-- Easy Mode -->
@@ -2339,11 +2955,20 @@
           <button id="btn-toggle-fullscreen" class="setting-action-btn">⛶ Enter Fullscreen</button>
         </div>
 
-        <!-- Setting 3: HUD Customization -->
+        <!-- Setting 3: Steering Control Mode -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Steering Control Mode</div>
+            <div class="setting-desc">Switch between continuous Helm Wheel rotation or discrete Left / Right tap buttons.</div>
+          </div>
+          <button id="btn-setting-steer-mode" class="setting-action-btn">☸️ Steering Wheel</button>
+        </div>
+
+        <!-- Setting 4: HUD Customization -->
         <div class="setting-row">
           <div class="setting-info">
             <div class="setting-title">On-Screen Control Customization</div>
-            <div class="setting-desc">Drag buttons to any position on screen and adjust their scale with [-] and [+] handles.</div>
+            <div class="setting-desc">Drag buttons to any position on screen and adjust their scale with [-] and [+] handles without limits.</div>
           </div>
           <button id="btn-open-customizer" class="setting-action-btn primary">🎨 Customize Controls</button>
         </div>
@@ -2355,59 +2980,132 @@
   <div id="multiplayer-modal" class="modal-overlay hidden">
     <div class="multiplayer-card">
       <div class="modal-header">
-        <h2>⚔️ MULTIPLAYER P2P (HOST & JOIN)</h2>
+        <h2>⚔️ MULTIPLAYER P2P 1v1 DUEL</h2>
         <button id="btn-close-multiplayer" class="modal-close-btn" title="Close">✕</button>
       </div>
 
-      <p class="mp-intro">Connect peer-to-peer with another captain via WebRTC. Real-time ship sailing, synchronized broadside volleys, and PvP/Co-op battles!</p>
+      <p class="mp-intro">1v1 High-Seas Naval Duel! Connect peer-to-peer via WebRTC. No bots — fight each other until the last ship standing wins!</p>
 
       <div class="mp-tabs">
-        <button id="tab-host" class="mp-tab active">⚓ HOST FLEET</button>
-        <button id="tab-join" class="mp-tab">⛵ JOIN FLEET</button>
+        <button id="tab-host" class="mp-tab active">⚓ HOST DUEL</button>
+        <button id="tab-join" class="mp-tab">⛵ JOIN DUEL</button>
       </div>
 
       <!-- Host Panel -->
       <div id="mp-host-panel" class="mp-panel">
-        <p class="mp-panel-desc">Create a room and share the 5-letter code with your friend:</p>
+        <p class="mp-panel-desc">Create a duel arena and share the 5-letter room code with the rival captain:</p>
 
         <div id="mp-host-idle">
-          <button id="btn-create-host" class="mp-action-btn primary">⚓ CREATE FLEET ROOM</button>
+          <button id="btn-create-host" class="mp-action-btn primary">⚓ CREATE DUEL ROOM</button>
         </div>
 
         <div id="mp-host-active" class="hidden">
           <div class="room-code-display">
             <div>
-              <div class="room-code-label">YOUR ROOM CODE:</div>
+              <div class="room-code-label">YOUR DUEL CODE:</div>
               <div id="host-code-val" class="room-code-text">-----</div>
             </div>
             <button id="btn-copy-code" class="copy-code-btn" title="Copy code to clipboard">📋 Copy</button>
           </div>
           <div class="mp-spinner-row">
             <div class="mp-spinner"></div>
-            <span id="mp-host-status">Waiting for crewmate to join...</span>
+            <span id="mp-host-status">Waiting for rival captain to join...</span>
           </div>
         </div>
       </div>
 
       <!-- Join Panel -->
       <div id="mp-join-panel" class="mp-panel hidden">
-        <p class="mp-panel-desc">Enter the Room Code provided by the host captain:</p>
+        <p class="mp-panel-desc">Enter the Room Code provided by the host captain to enter the duel arena:</p>
         <div class="join-input-group">
           <input type="text" id="join-room-input" placeholder="CODE" maxlength="8" autocomplete="off" />
-          <button id="btn-submit-join" class="mp-action-btn primary">JOIN</button>
+          <button id="btn-submit-join" class="mp-action-btn primary">JOIN DUEL</button>
         </div>
         <div id="mp-join-status" class="mp-status-msg info"></div>
       </div>
 
       <!-- Connected State Banner -->
       <div id="mp-connected-panel" class="mp-panel hidden">
-        <div class="mp-connected-box" style="padding: 16px; background: rgba(46, 125, 50, 0.25); border: 1.5px solid #4caf50; border-radius: 12px; margin-top: 10px;">
-          <div style="font-size:32px;">🎉</div>
-          <div style="font-size:18px;font-weight:bold;color:#ffeb3b;margin:6px 0;">CREWMATE CONNECTED!</div>
-          <p style="font-size:12px;color:#c8e6c9;margin-bottom:12px;">WebRTC P2P DataChannel established successfully.</p>
-          <button id="btn-start-multiplayer-game" class="mp-action-btn primary">SET SAIL TOGETHER ⛵</button>
+        <div class="mp-connected-box" style="padding: 18px; background: rgba(30, 20, 10, 0.95); border: 2px solid #ffd54f; border-radius: 14px; margin-top: 10px; text-align: center;">
+          <div style="font-size:36px;">⚔️</div>
+          <div style="font-size:19px;font-weight:bold;color:#ffd54f;margin:8px 0;">RIVAL CAPTAIN READY FOR BATTLE!</div>
+          <p style="font-size:13px;color:#e0e0e0;margin-bottom:14px;line-height:1.4;">
+            P2P duel connection established.<br>
+            <strong style="color:#81c784;">No AI Bots</strong> — 1v1 naval warship duel.<br>
+            <strong style="color:#ffb300;">Last ship standing will be the winner!</strong>
+          </p>
+          <button id="btn-start-multiplayer-game" class="mp-action-btn primary" style="font-size: 15px; padding: 12px 24px; width: 100%;">COMMENCE BATTLE ⚔️</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- PvP Battle End Modal (Victory / Defeat - Last Ship Standing) -->
+  <div id="pvp-end-modal" class="modal-overlay hidden">
+    <div class="pvp-end-card">
+      <div id="pvp-end-badge" class="pvp-end-badge victory">🏆 VICTORY 🏆</div>
+      <h2 id="pvp-end-title" class="pvp-end-title">LAST SHIP STANDING!</h2>
+      <p id="pvp-end-subtitle" class="pvp-end-subtitle">You sent the rival flagship to Davy Jones' Locker and conquered the archipelago!</p>
+      
+      <div class="pvp-stats-box">
+        <div class="pvp-stat-row">
+          <span>Winner:</span>
+          <strong id="pvp-winner-name" style="color: #ffd54f;">You (Dead-Man's-Wake)</strong>
+        </div>
+        <div class="pvp-stat-row">
+          <span>Your Hull:</span>
+          <strong id="pvp-hull-remaining" style="color: #81c784;">100% Remaining</strong>
+        </div>
+        <div class="pvp-stat-row">
+          <span>Rival Hull:</span>
+          <strong id="pvp-rival-hull" style="color: #e57373;">0% (SUNK)</strong>
+        </div>
+        <div class="pvp-stat-row" id="pvp-reward-row">
+          <span>Plundered Bounty:</span>
+          <strong id="pvp-bounty-val" style="color: #ffd54f;">+1,000 🪙 GOLD</strong>
+        </div>
+      </div>
+
+      <div class="pvp-end-actions">
+        <button id="btn-pvp-rematch" class="mp-action-btn primary" style="font-size: 15px; padding: 12px 20px;">⚔️ PLAY AGAIN / REMATCH</button>
+        <button id="btn-pvp-menu" class="mp-action-btn secondary" style="font-size: 14px; padding: 10px 18px;">🚪 RETURN TO MAIN MENU</button>
+      </div>
+
+      <div id="pvp-rematch-status" class="mp-status-msg info hidden" style="margin-top: 14px;">Waiting for rival captain to accept rematch...</div>
+    </div>
+  </div>
+
+  <!-- Single Player Defeat / Sunk Modal (Play Again Option) -->
+  <div id="defeat-modal" class="modal-overlay hidden">
+    <div class="salvage-card" style="border-color: #d32f2f; box-shadow: 0 0 40px rgba(211, 47, 47, 0.9); text-align: center; max-width: 440px;">
+      <div class="salvage-skull" style="filter: drop-shadow(0 0 16px #ff1744); font-size: 52px; margin-bottom: 6px;">☠️</div>
+      <div class="salvage-title" style="color: #ff5252; font-size: 26px; font-weight: 900; letter-spacing: 2px;">SHIP SUNK!</div>
+      <div class="salvage-enemy-name" id="defeat-cause-text" style="color: #ffcdd2; margin: 8px 0; font-size: 15px;">Your ship was sent to Davy Jones' Locker!</div>
+      <div class="salvage-desc" style="font-size: 13px; color: #d7ccc8; max-width: 360px; margin: 0 auto 20px auto; line-height: 1.4;">The high seas are merciless, Captain. Repair your hull, gather your courage, and take command of the helm once more!</div>
+
+      <div class="salvage-options" style="display: flex; gap: 12px; justify-content: center;">
+        <button class="salvage-btn recovery" id="btn-defeat-replay" style="flex: 1.2; background: linear-gradient(180deg, #2e7d32, #1b5e20); border: 2px solid #81c784; font-size: 15px; padding: 13px 18px; cursor: pointer; color: #fff; font-weight: bold; border-radius: 6px; box-shadow: 0 4px 14px rgba(46, 125, 50, 0.6);">
+          ⚔️ PLAY AGAIN
+        </button>
+        <button class="salvage-btn loot" id="btn-defeat-menu" style="flex: 1; background: linear-gradient(180deg, #37474f, #212121); border: 2px solid #90a4ae; font-size: 14px; padding: 13px 16px; cursor: pointer; color: #eceff1; font-weight: bold; border-radius: 6px;">
+          🏠 MAIN MENU
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Force Landscape Orientation Overlay -->
+  <div id="orientation-overlay" class="hidden">
+    <div class="orientation-box">
+      <div class="rotate-phone-anim">
+        <div class="phone-icon-wrapper">
+          <span class="rotate-phone-icon">📱</span>
+          <span class="rotate-arrow-icon">🔄</span>
+        </div>
+      </div>
+      <h2 class="orientation-title">ROTATE YOUR DEVICE</h2>
+      <p class="orientation-desc">Dead-Man's-Wake is designed for <strong>Landscape Mode</strong> for high-seas navigation & naval broadsides.</p>
+      <button id="btn-force-landscape" class="btn-landscape-fullscreen">⛶ ENTER LANDSCAPE FULLSCREEN</button>
     </div>
   </div>
 

@@ -20,7 +20,7 @@ export class CollisionSystem {
     this.enemyDamageMultiplier = enemyMult;
   }
 
-  update(delta, playerShip, enemies) {
+  update(delta, playerShip, enemies, remoteShip = null) {
     // Tick down all cooldowns
     for (const [key, time] of this.cooldowns.entries()) {
       const nextTime = time - delta;
@@ -43,12 +43,22 @@ export class CollisionSystem {
       }
     }
 
+    // Check Remote Ship vs Islands in Multiplayer
+    if (remoteShip && !remoteShip.isSinking) {
+      this.checkShipIslandCollision(remoteShip, false);
+    }
+
     // 3. Check Player vs Enemies (Ship-to-Ship & Front Ramming)
     if (!playerShip.isSinking) {
       for (const enemy of enemies) {
         if (!enemy.ship.isSinking) {
           this.checkShipToShipCollision(playerShip, enemy);
         }
+      }
+
+      // Check Player vs Remote Peer in Multiplayer (PvP Ramming Duel!)
+      if (remoteShip && !remoteShip.isSinking) {
+        this.checkShipToShipCollision(playerShip, { ship: remoteShip, name: 'Rival Captain' });
       }
     }
 

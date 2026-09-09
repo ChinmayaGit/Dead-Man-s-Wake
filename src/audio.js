@@ -42,34 +42,67 @@ export class SoundController {
     }
   }
 
-  fadeAudio(audio, targetVolume, duration) {
-    if (this.muted) return;
-    const startVolume = audio.volume;
+  fadeAudio(audio, targetVolume, duration = 1000) {
+    if (!audio) return;
+    if (this.muted) {
+      audio.volume = 0;
+      return;
+    }
+
+    // Cancel any currently running fade on this audio element
+    if (audio._fadeAnimId) {
+      cancelAnimationFrame(audio._fadeAnimId);
+      audio._fadeAnimId = null;
+    }
+
+    const clampedTarget = Math.max(0, Math.min(1, targetVolume));
+    const startVolume = Math.max(0, Math.min(1, audio.volume));
     const startTime = performance.now();
 
     const fade = (currentTime) => {
+      if (this.muted) {
+        audio.volume = 0;
+        audio._fadeAnimId = null;
+        return;
+      }
+
       const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      audio.volume = startVolume + (targetVolume - startVolume) * progress;
+      const progress = Math.max(0, Math.min(1, elapsed / duration));
+      const currentVol = startVolume + (clampedTarget - startVolume) * progress;
+      audio.volume = Math.max(0, Math.min(1, currentVol));
+
       if (progress < 1) {
-        requestAnimationFrame(fade);
+        audio._fadeAnimId = requestAnimationFrame(fade);
+      } else {
+        audio.volume = clampedTarget;
+        audio._fadeAnimId = null;
       }
     };
-    requestAnimationFrame(fade);
+
+    audio._fadeAnimId = requestAnimationFrame(fade);
   }
 
   toggleMute() {
     this.muted = !this.muted;
+    if (this.oceanAudio && this.oceanAudio._fadeAnimId) {
+      cancelAnimationFrame(this.oceanAudio._fadeAnimId);
+      this.oceanAudio._fadeAnimId = null;
+    }
+    if (this.combatAudio && this.combatAudio._fadeAnimId) {
+      cancelAnimationFrame(this.combatAudio._fadeAnimId);
+      this.combatAudio._fadeAnimId = null;
+    }
+
     if (this.muted) {
-      this.oceanAudio.volume = 0;
-      this.combatAudio.volume = 0;
+      if (this.oceanAudio) this.oceanAudio.volume = 0;
+      if (this.combatAudio) this.combatAudio.volume = 0;
     } else {
       if (this.bgmMode === 'combat') {
-        this.oceanAudio.volume = 0.15;
-        this.combatAudio.volume = 0.6;
+        if (this.oceanAudio) this.oceanAudio.volume = 0.15;
+        if (this.combatAudio) this.combatAudio.volume = 0.6;
       } else {
-        this.oceanAudio.volume = 0.5;
-        this.combatAudio.volume = 0;
+        if (this.oceanAudio) this.oceanAudio.volume = 0.5;
+        if (this.combatAudio) this.combatAudio.volume = 0;
       }
     }
     return this.muted;
@@ -231,6 +264,31 @@ export class SoundController {
       osc.start(now + offset);
       osc.stop(now + offset + 0.05);
     });
+  }
+
+  // Instant tactical dodge evasive surge sound (gust of wind + surging wave splash)
+  playDodgeWhoosh() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx;
+    const now = ctx.currentTime;
+
+    // Sweeping wind whistle
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(320, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.35);
+
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.35);
+
+    // Fast white noise water rush
+    this.playWaterSplash();
   }
 
   // Heavy ramming crash impact sound (deep resonant wood crunch + sub-bass impact)
