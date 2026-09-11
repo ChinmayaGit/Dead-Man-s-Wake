@@ -8,6 +8,7 @@ export class CollisionSystem {
     this.combat = combatSystem;
     this.onCameraShake = callbacks.onCameraShake || null;
     this.onPlayerDamage = callbacks.onPlayerDamage || null;
+    this.onEnemyDamage = callbacks.onEnemyDamage || null;
     this.playerDamageMultiplier = 1.0;
     this.enemyDamageMultiplier = 1.0;
 
@@ -208,22 +209,26 @@ export class CollisionSystem {
         const contactPos = playerShip.position.clone().add(enemyShip.position).multiplyScalar(0.5);
         contactPos.y = Math.max(playerShip.heave, enemyShip.heave) + 1.8;
 
-        if (playerFrontRam && playerSpeed > 2.0) {
+        if (playerFrontRam && !enemyFrontRam && playerSpeed > 1.2) {
           // ========================================================
           // PLAYER RAMS ENEMY SHIP WITH BOW (Front Ramming Attack!)
           // ========================================================
-          // Massive ramming strike dealt to enemy ship (28 to 75 damage!)
-          const enemyRamDmg = Math.round((28 + playerSpeed * 2.7) * (this.playerDamageMultiplier || 1.0));
-
-          // Front impact collision damage also taken by Dead-Man-s-Wake (as requested)
-          const playerRecoilDmg = Math.round((9 + playerSpeed * 0.85) * (this.enemyDamageMultiplier || 1.0));
+          // Massive ramming strike dealt to enemy ship (28 to 55 damage!)
+          const enemyRamDmg = Math.round((28 + playerSpeed * 2.2) * (this.playerDamageMultiplier || 1.0));
+          // Attacker's reinforced prow absorbs impact: zero recoil damage to attacker
+          const playerRecoilDmg = 0;
 
           enemyShip.takeDamage(enemyRamDmg);
-          playerShip.takeDamage(playerRecoilDmg);
+          if (this.onEnemyDamage) {
+            this.onEnemyDamage(enemyShip, enemyRamDmg, true);
+          }
+          if (this.combat && this.combat.spawnDamageNumber) {
+            this.combat.spawnDamageNumber(contactPos, enemyRamDmg, 5);
+          }
 
           // Impact physics: rebound player slightly and disrupt enemy velocity
-          playerShip.speed = -Math.min(3.2, playerSpeed * 0.32);
-          enemyShip.speed = Math.max(0, enemySpeed * 0.35);
+          playerShip.speed = -Math.min(2.5, playerSpeed * 0.25);
+          enemyShip.speed = Math.max(0, enemySpeed * 0.3);
 
           // Spurt wood splinters, debris and water surge
           this.combat.spawnSplinterExplosion(contactPos);
@@ -234,18 +239,46 @@ export class CollisionSystem {
             this.sound.playRammingCrash();
           }
 
-          if (this.onCameraShake) this.onCameraShake(1.25, 0.55);
-          if (this.onPlayerDamage) this.onPlayerDamage(playerRecoilDmg);
+          if (this.onCameraShake) this.onCameraShake(1.2, 0.5);
 
-        } else if (enemyFrontRam && enemySpeed > 2.0) {
+        } else if (playerFrontRam && enemyFrontRam && (playerSpeed > 1.2 || enemySpeed > 1.2)) {
+          // ========================================================
+          // HEAD-ON COLLISION (Both Ships Ram Each Other Bow-to-Bow!)
+          // ========================================================
+          const sharedSpeed = Math.max(playerSpeed, enemySpeed);
+          const pDmg = Math.round((18 + sharedSpeed * 1.6) * (this.enemyDamageMultiplier || 1.0));
+          const eDmg = Math.round((18 + sharedSpeed * 1.6) * (this.playerDamageMultiplier || 1.0));
+
+          playerShip.takeDamage(pDmg);
+          enemyShip.takeDamage(eDmg);
+
+          if (this.onEnemyDamage) {
+            this.onEnemyDamage(enemyShip, eDmg, true);
+          }
+          if (this.onPlayerDamage) this.onPlayerDamage(pDmg);
+          if (this.combat && this.combat.spawnDamageNumber) {
+            this.combat.spawnDamageNumber(contactPos, eDmg, 5);
+          }
+
+          playerShip.speed = -Math.min(2.8, playerSpeed * 0.3);
+          enemyShip.speed = -Math.min(2.8, enemySpeed * 0.3);
+
+          this.combat.spawnSplinterExplosion(contactPos);
+          this.combat.spawnWaterSplash(contactPos);
+
+          if (this.sound && this.sound.playRammingCrash) {
+            this.sound.playRammingCrash();
+          }
+          if (this.onCameraShake) this.onCameraShake(1.3, 0.6);
+
+        } else if (!playerFrontRam && enemyFrontRam && enemySpeed > 1.4) {
           // ========================================================
           // ENEMY RAMS PLAYER FROM FRONT
           // ========================================================
-          const playerDamage = Math.round((24 + enemySpeed * 2.0) * (this.enemyDamageMultiplier || 1.0));
-          const enemyDamage = Math.round((11 + enemySpeed * 0.8) * (this.playerDamageMultiplier || 1.0));
+          const playerDamage = Math.round((22 + enemySpeed * 1.8) * (this.enemyDamageMultiplier || 1.0));
 
           playerShip.takeDamage(playerDamage);
-          enemyShip.takeDamage(enemyDamage);
+          // Note: Defending ship takes damage; never send damage back to the attacker over network
 
           enemyShip.speed = -Math.min(2.5, enemySpeed * 0.3);
 
@@ -256,7 +289,7 @@ export class CollisionSystem {
             this.sound.playRammingCrash();
           }
 
-          if (this.onCameraShake) this.onCameraShake(1.05, 0.5);
+          if (this.onCameraShake) this.onCameraShake(1.1, 0.5);
           if (this.onPlayerDamage) this.onPlayerDamage(playerDamage);
 
         } else {
@@ -265,10 +298,23 @@ export class CollisionSystem {
           // ========================================================
           const relSpeed = Math.max(playerSpeed, enemySpeed);
           if (relSpeed > 1.4) {
-            const sidePlayerDmg = Math.round((10 + relSpeed * 1.1) * (this.enemyDamageMultiplier || 1.0));
-            const sideEnemyDmg = Math.round((10 + relSpeed * 1.1) * (this.playerDamageMultiplier || 1.0));
-            playerShip.takeDamage(sidePlayerDmg);
-            enemyShip.takeDamage(sideEnemyDmg);
+            if (playerSpeed >= enemySpeed) {
+              // Player was faster and sideswiped enemy: deal damage to enemy, 0 damage to player
+              const sideEnemyDmg = Math.round((10 + playerSpeed * 1.4) * (this.playerDamageMultiplier || 1.0));
+              enemyShip.takeDamage(sideEnemyDmg);
+
+              if (this.onEnemyDamage) {
+                this.onEnemyDamage(enemyShip, sideEnemyDmg, false);
+              }
+              if (this.combat && this.combat.spawnDamageNumber) {
+                this.combat.spawnDamageNumber(contactPos, sideEnemyDmg, 5);
+              }
+            } else {
+              // Enemy was faster and sideswiped player
+              const sidePlayerDmg = Math.round((8 + enemySpeed * 1.0) * (this.enemyDamageMultiplier || 1.0));
+              playerShip.takeDamage(sidePlayerDmg);
+              if (this.onPlayerDamage) this.onPlayerDamage(sidePlayerDmg);
+            }
 
             this.combat.spawnSplinterExplosion(contactPos);
             this.combat.spawnWaterSplash(contactPos);
@@ -278,7 +324,6 @@ export class CollisionSystem {
             }
 
             if (this.onCameraShake) this.onCameraShake(0.65, 0.35);
-            if (this.onPlayerDamage) this.onPlayerDamage(sideDmg);
           }
 
           playerShip.speed *= 0.82;

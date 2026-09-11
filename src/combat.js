@@ -356,7 +356,7 @@ export class CombatSystem {
   }
 
   // Fire a broadside salvo of cannonballs with dynamic charge-based velocity and narrow spread
-  fireBroadside(firingShip, targetShip, side, charge = 0) {
+  fireBroadside(firingShip, targetShip, side, charge = 0, isRemoteVisual = false) {
     const muzzlePositions = firingShip.getCannonOrigins(side);
     const right = firingShip.getRightVector();
     const broadsideDir = side === 'port' ? right.clone().negate() : right.clone();
@@ -411,7 +411,8 @@ export class CombatSystem {
           alive: true,
           age: 0,
           charge: chargeClamped,
-          prevPos: origin.clone()
+          prevPos: origin.clone(),
+          isRemoteVisual
         });
 
         // Muzzle smoke and flash
@@ -586,7 +587,8 @@ export class CombatSystem {
 
   spawnWaterSplash(pos) {
     this.sound.playWaterSplash();
-    for (let i = 0; i < 8; i++) {
+    const count = Math.max(3, Math.round(8 * (this.particleMultiplier || 1.0)));
+    for (let i = 0; i < count; i++) {
       const geo = new THREE.SphereGeometry(0.4 + Math.random() * 0.3, 5, 5);
       const mat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
@@ -615,7 +617,8 @@ export class CombatSystem {
   spawnSplinterExplosion(pos) {
     this.sound.playHullImpact();
     // Wood splinters
-    for (let i = 0; i < 12; i++) {
+    const count = Math.max(4, Math.round(12 * (this.particleMultiplier || 1.0)));
+    for (let i = 0; i < count; i++) {
       const geo = new THREE.BoxGeometry(0.15, 0.5 + Math.random() * 0.4, 0.15);
       const mat = new THREE.MeshStandardMaterial({
         color: 0x6b4423,
@@ -694,27 +697,29 @@ export class CombatSystem {
             const hitDist = currPos.distanceTo(fireOrigin);
 
             // "MORE NEAR MORE DAMAGE" - Balanced Naval Combat:
-            // Point-blank range (<=12m) deals 1.75x damage (~22 to 28 dmg per ball)
-            // Mid-range (60m) deals 1.0x damage (~13 to 16 dmg per ball)
-            // Maximum range (145m) deals 0.65x damage (~8 to 11 dmg per ball)
+            // Point-blank range (<=12m) deals 1.35x damage (~8 to 11 dmg per ball)
+            // Mid-range (60m) deals 1.0x damage (~6 to 8 dmg per ball)
+            // Maximum range (145m) deals 0.75x damage (~4 to 6 dmg per ball)
+            // A full 4-ball broadside volley deals ~24-34 damage total, requiring 3-4 tactical volleys to sink a 100 HP ship!
             const minProximityDist = 12.0;
             const maxProximityDist = 145.0;
             const proximity = 1.0 - THREE.MathUtils.clamp((hitDist - minProximityDist) / (maxProximityDist - minProximityDist), 0.0, 1.0);
-            const proximityMultiplier = THREE.MathUtils.lerp(0.65, 1.75, proximity);
+            const proximityMultiplier = THREE.MathUtils.lerp(0.75, 1.35, proximity);
 
             const isPlayerFiring = (b.firingShip && b.firingShip.isPlayer);
-            const baseBallDamage = isPlayerFiring ? 12 : 9;
-            const chargeBonus = Math.round((b.charge || 0) * 4);
+            const baseBallDamage = isPlayerFiring ? 6 : 5;
+            const chargeBonus = Math.round((b.charge || 0) * 2);
             const dmgMult = isPlayerFiring ? (this.playerDamageMultiplier || 1.0) : (this.enemyDamageMultiplier || 1.0);
-            const finalDamage = Math.max(4, Math.round((baseBallDamage + chargeBonus) * proximityMultiplier * dmgMult));
+            const finalDamage = Math.max(3, Math.round((baseBallDamage + chargeBonus) * proximityMultiplier * dmgMult));
 
-            tShip.takeDamage(finalDamage);
+            if (!b.isRemoteVisual) {
+              tShip.takeDamage(finalDamage);
+              if (this.onShipHit) {
+                this.onShipHit(tShip, finalDamage, hitDist);
+              }
+            }
             this.spawnSplinterExplosion(currPos);
             this.spawnDamageNumber(currPos, finalDamage, hitDist);
-
-            if (this.onShipHit) {
-              this.onShipHit(tShip, finalDamage, hitDist);
-            }
 
             this.scene.remove(b.mesh);
             this.cannonballs.splice(i, 1);

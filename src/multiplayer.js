@@ -174,30 +174,34 @@ export class MultiplayerManager {
     }
   }
 
+  sendShipState() {
+    if (!this.isConnected || !this.game || !this.game.playerShip) return;
+
+    const p = this.game.playerShip;
+    const statePacket = {
+      type: 'state',
+      x: Number(p.position.x.toFixed(2)),
+      y: Number(p.position.y.toFixed(2)),
+      z: Number(p.position.z.toFixed(2)),
+      rotY: Number(p.heading.toFixed(3)),
+      roll: Number(p.roll.toFixed(3)),
+      pitch: Number(p.pitch.toFixed(3)),
+      heave: Number(p.heave.toFixed(3)),
+      speed: Number(p.speed.toFixed(2)),
+      rudder: Number(p.rudder.toFixed(2)),
+      sailState: p.sailState,
+      health: p.health,
+      maxHealth: p.maxHealth,
+      sinking: p.isSinking
+    };
+    this.send(statePacket);
+  }
+
   startStateSync() {
     if (this.sendInterval) clearInterval(this.sendInterval);
     // 20Hz sync (every 50ms)
     this.sendInterval = setInterval(() => {
-      if (!this.isConnected || !this.game || !this.game.playerShip) return;
-
-      const p = this.game.playerShip;
-      const statePacket = {
-        type: 'state',
-        x: Number(p.position.x.toFixed(2)),
-        y: Number(p.position.y.toFixed(2)),
-        z: Number(p.position.z.toFixed(2)),
-        rotY: Number(p.heading.toFixed(3)),
-        roll: Number(p.roll.toFixed(3)),
-        pitch: Number(p.pitch.toFixed(3)),
-        heave: Number(p.heave.toFixed(3)),
-        speed: Number(p.speed.toFixed(2)),
-        rudder: Number(p.rudder.toFixed(2)),
-        sailState: p.sailState,
-        health: p.health,
-        maxHealth: p.maxHealth,
-        sinking: p.isSinking
-      };
-      this.send(statePacket);
+      this.sendShipState();
     }, 50);
   }
 
@@ -206,7 +210,7 @@ export class MultiplayerManager {
 
     if (data.type === 'handshake') {
       console.log('🤝 [P2P Handshake received]:', data);
-      if (this.role === 'client' && data.difficulty) {
+      if (data.difficulty) {
         this.game.setDifficulty(data.difficulty, false);
       }
     } else if (data.type === 'state') {
@@ -218,13 +222,17 @@ export class MultiplayerManager {
       // Remote player fired broadside cannons
       this.handleRemoteFire(data);
     } else if (data.type === 'hit') {
-      // Direct cannon hit notice
+      // Direct cannon or ramming hit notice
       if (this.game && this.game.playerShip) {
         this.game.playerShip.takeDamage(data.damage || 15);
-        this.game.triggerCameraShake(0.8, 0.4);
+        this.game.triggerCameraShake(data.isRam ? 1.25 : 0.8, 0.45);
         this.game.triggerDamageFeedback(data.damage || 15);
-        if (this.game.sound && this.game.sound.playHullImpact) {
-          this.game.sound.playHullImpact();
+        if (this.game.sound) {
+          if (data.isRam && this.game.sound.playRammingCrash) {
+            this.game.sound.playRammingCrash();
+          } else if (this.game.sound.playHullImpact) {
+            this.game.sound.playHullImpact();
+          }
         }
       }
     } else if (data.type === 'emote') {
@@ -399,11 +407,12 @@ export class MultiplayerManager {
     });
   }
 
-  notifyCannonHit(damage) {
+  notifyCannonHit(damage, isRam = false) {
     if (!this.isConnected) return;
     this.send({
       type: 'hit',
-      damage
+      damage,
+      isRam
     });
   }
 
@@ -439,7 +448,7 @@ export class MultiplayerManager {
     const charge = data.charge || 0;
     console.log(`💥 [P2P] Remote ship firing ${side} broadside (charge ${charge})`);
     const targets = [this.game.playerShip, ...this.game.enemies.map(e => e.ship)];
-    this.game.combat.fireBroadside(this.remoteShip, targets, side, charge);
+    this.game.combat.fireBroadside(this.remoteShip, targets, side, charge, true);
   }
 
   handlePeerDisconnected() {

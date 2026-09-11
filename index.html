@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="screen-orientation" content="landscape" />
   <meta name="x5-orientation" content="landscape" />
   <title>Dead-Man-s-Wake</title>
@@ -13,11 +16,41 @@
       if (!box) {
         box = document.createElement('div');
         box.id = 'debug-error-box';
-        box.style = 'position:fixed;top:10px;left:10px;right:10px;background:rgba(200,20,20,0.95);color:#fff;padding:16px;z-index:999999;font-family:monospace;font-size:13px;border:2px solid #ffcc00;border-radius:6px;max-height:50vh;overflow:auto;white-space:pre-wrap;';
+        box.style = 'position:fixed;top:10px;left:10px;right:10px;background:rgba(180,18,18,0.96);color:#fff;padding:16px 42px 14px 16px;z-index:999999;font-family:monospace;font-size:13px;border:2px solid #ffd54f;border-radius:8px;max-height:50vh;overflow:auto;white-space:pre-wrap;box-shadow:0 8px 30px rgba(0,0,0,0.85);cursor:pointer;';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.id = 'debug-error-close-btn';
+        closeBtn.innerHTML = '✕';
+        closeBtn.title = 'Dismiss Error';
+        closeBtn.style = 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);border:1.5px solid #ffd54f;color:#ffd54f;border-radius:50%;width:28px;height:28px;cursor:pointer;font-weight:bold;font-size:15px;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,0.6);';
+        
+        const onDismiss = function(e) {
+          if (e) e.stopPropagation();
+          if (box && box.parentNode) box.parentNode.removeChild(box);
+        };
+        closeBtn.addEventListener('click', onDismiss);
+        closeBtn.addEventListener('touchstart', onDismiss, { passive: true });
+        box.addEventListener('click', onDismiss);
+        box.appendChild(closeBtn);
+
+        const contentDiv = document.createElement('div');
+        contentDiv.id = 'debug-error-content';
+        box.appendChild(contentDiv);
+
+        const footerHint = document.createElement('div');
+        footerHint.style = 'margin-top:8px;font-size:11px;color:#ffe082;font-style:italic;opacity:0.9;';
+        footerHint.textContent = '💡 Tap anywhere on this banner or click ✕ to dismiss';
+        box.appendChild(footerHint);
+
         const target = document.body || document.documentElement;
         if (target) target.appendChild(box);
       }
-      if (box) box.innerText += '\n' + msg;
+      const content = document.getElementById('debug-error-content');
+      if (content) {
+        content.innerText += (content.innerText ? '\n' : '') + msg;
+      } else if (box) {
+        box.innerText += '\n' + msg;
+      }
     }
     const _origLog = console.log;
     console.log = function(...args) {
@@ -138,35 +171,66 @@
       background: linear-gradient(180deg, rgba(38, 12, 12, 0.92) 0%, rgba(18, 5, 5, 0.96) 100%);
       border: 2px solid #b71c1c;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), inset 0 0 12px rgba(255, 23, 68, 0.25);
-      transition: opacity 0.35s ease, transform 0.35s ease;
+      transition: opacity 0.35s ease;
       opacity: 0;
       pointer-events: none;
-      transform: translateY(-8px);
     }
 
     #enemy-status-card.visible {
       opacity: 1;
       pointer-events: auto;
-      transform: translateY(0);
+    }
+
+    body.hud-editing #enemy-status-card {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+
+    /* iOS Fullscreen PWA & Pseudo-Fullscreen fallback */
+    html.ios-fullscreen, body.ios-fullscreen {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100dvh !important;
+      z-index: 999999 !important;
+      overflow: hidden !important;
     }
 
     .enemy-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 6px;
+      width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
     }
 
     .enemy-title-row {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #enemy-ship-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+      display: inline-block;
     }
 
     .enemy-alert-diamond {
       color: #ff1744;
-      font-size: 15px;
+      font-size: 14px;
       display: inline-block;
+      flex-shrink: 0;
       animation: alertDiamondPulse 0.8s infinite alternate ease-in-out;
       filter: drop-shadow(0 0 6px rgba(255, 23, 68, 0.9));
     }
@@ -176,17 +240,11 @@
       100% { transform: scale(1.25); opacity: 1.0; filter: drop-shadow(0 0 10px rgba(255, 23, 68, 1)); }
     }
 
-    .enemy-actions-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
     .enemy-lock-btn {
-      font-size: 9.5px;
+      font-size: 9px;
       font-weight: 800;
       letter-spacing: 0.8px;
-      padding: 3px 7px;
+      padding: 3px 8px;
       border-radius: 4px;
       background: rgba(183, 28, 28, 0.9);
       color: #ffffff;
@@ -194,7 +252,9 @@
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 3px;
+      justify-content: center;
+      flex-shrink: 0;
+      white-space: nowrap;
       transition: all 0.2s ease;
       user-select: none;
       box-shadow: 0 0 8px rgba(255, 23, 68, 0.4);
@@ -402,7 +462,7 @@
       border: 1.5px solid #d4af37;
       border-radius: 6px;
       color: #ffd54f;
-      font-size: 10px;
+      font-size: 14px;
       font-weight: 900;
       letter-spacing: 0.5px;
       cursor: pointer;
@@ -1506,6 +1566,42 @@
       box-shadow: 0 0 12px rgba(129, 199, 132, 0.6);
     }
 
+    .graphics-quality-group {
+      display: flex;
+      gap: 6px;
+      background: rgba(20, 14, 10, 0.85);
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid #5d4037;
+    }
+
+    .gfx-btn {
+      padding: 6px 12px;
+      font-size: 11.5px;
+      font-weight: 800;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #b0bec5;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .gfx-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .gfx-btn.active {
+      background: linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%);
+      color: #fff;
+      border-color: #81c784;
+      box-shadow: 0 0 10px rgba(129, 199, 132, 0.5);
+    }
+
     .setting-action-btn {
       background: linear-gradient(180deg, rgba(60, 40, 28, 0.9) 0%, rgba(30, 20, 14, 0.95) 100%);
       border: 1px solid #b8860b;
@@ -1540,20 +1636,28 @@
       background: linear-gradient(180deg, rgba(28, 18, 12, 0.96) 0%, rgba(14, 8, 5, 0.98) 100%);
       border: 2px solid #ffd54f;
       border-radius: 28px;
-      padding: 8px 20px;
+      padding: 8px 18px;
       display: flex;
       align-items: center;
-      gap: 18px;
+      gap: 14px;
       z-index: 99999;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 213, 79, 0.4);
-      transition: opacity 0.3s ease, transform 0.3s ease;
+      transition: opacity 0.3s ease;
       user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    #hud-customizer-bar.is-dragging {
+      cursor: grabbing !important;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 30px rgba(255, 213, 79, 0.8) !important;
     }
 
     #hud-customizer-bar.hidden {
       opacity: 0;
       pointer-events: none;
-      transform: translateX(-50%) translateY(-20px);
+      transform: translateX(-50%) translateY(-20px) !important;
     }
 
     .customizer-info {
@@ -1562,6 +1666,7 @@
       gap: 10px;
       font-size: 13px;
       color: #e0e0e0;
+      cursor: grab;
     }
 
     .customizer-badge {
@@ -1572,11 +1677,15 @@
       padding: 3px 8px;
       border-radius: 12px;
       letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
 
     .customizer-actions {
       display: flex;
       gap: 8px;
+      cursor: default;
     }
 
     .cust-btn {
@@ -1586,6 +1695,16 @@
       font-weight: bold;
       cursor: pointer;
       transition: all 0.15s;
+    }
+
+    .cust-btn.share {
+      background: #1565c0;
+      border: 1px solid #64b5f6;
+      color: #fff;
+    }
+    .cust-btn.share:hover {
+      background: #1976d2;
+      box-shadow: 0 0 10px rgba(100, 181, 246, 0.5);
     }
 
     .cust-btn.save {
@@ -1650,6 +1769,7 @@
       top: -34px;
       left: 50%;
       transform: translateX(-50%);
+      transform-origin: bottom center;
       background: rgba(18, 12, 8, 0.95);
       border: 1px solid #ffd54f;
       border-radius: 14px;
@@ -1666,14 +1786,25 @@
       touch-action: manipulation;
     }
 
-    /* Position status card edit controls below it so they don't clip off the top edge */
-    #status-card .widget-edit-controls {
+    /* Position status & top widgets edit controls below them so they don't clip off the top edge */
+    #status-card .widget-edit-controls,
+    #enemy-status-card .widget-edit-controls,
+    #compass-container .widget-edit-controls,
+    #hud-top-right .widget-edit-controls,
+    #p2p-hud-widget .widget-edit-controls {
       top: auto;
       bottom: -34px;
+      transform-origin: top center;
     }
 
     body.hud-editing .hud-customizable .widget-edit-controls {
       display: flex;
+    }
+
+    body.hud-editing #p2p-hud-widget {
+      display: flex !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
     }
 
     .widget-scale-btn {
@@ -1951,8 +2082,8 @@
       }
 
       .sail-step-btn {
-        height: 22px;
-        font-size: 8px;
+        height: 24px;
+        font-size: 12px;
         padding: 2px 4px;
         border-radius: 4px;
       }
@@ -2013,6 +2144,22 @@
       }
       .cust-btn {
         padding: 5px 8px;
+        font-size: 11px;
+      }
+
+      .graphics-setting-row {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 10px !important;
+      }
+      .graphics-quality-group {
+        width: 100%;
+        justify-content: space-between;
+      }
+      .gfx-btn {
+        flex: 1;
+        text-align: center;
+        padding: 7px 4px;
         font-size: 11px;
       }
     }
@@ -2080,8 +2227,8 @@
       font-size: 8px;
     }
     body.mobile-controls-active .sail-step-btn {
-      height: 22px;
-      font-size: 8px;
+      height: 24px;
+      font-size: 12px;
       padding: 2px 4px;
     }
     body.mobile-controls-active .hud-tool-btn {
@@ -2268,6 +2415,101 @@
     .mp-status-msg.error { color: #ef5350; }
     .mp-status-msg.success { color: #81c784; }
     .mp-status-msg.info { color: #90caf9; }
+
+    /* Multiplayer Difficulty Selector */
+    .mp-diff-section {
+      width: 100%;
+      max-width: 440px;
+      background: rgba(28, 16, 10, 0.92);
+      border: 1.5px solid #8d6e63;
+      border-radius: 10px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-sizing: border-box;
+      text-align: left;
+    }
+
+    .mp-diff-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .mp-diff-label {
+      font-size: 11px;
+      font-weight: bold;
+      color: #ffd54f;
+      letter-spacing: 0.8px;
+    }
+
+    .mp-diff-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    .mp-diff-badge.easy {
+      background: rgba(76, 175, 80, 0.25);
+      color: #a5d6a7;
+      border: 1px solid #4caf50;
+    }
+
+    .mp-diff-badge.medium {
+      background: rgba(255, 179, 0, 0.25);
+      color: #ffe082;
+      border: 1px solid #ffb300;
+    }
+
+    .mp-diff-badge.hard {
+      background: rgba(244, 67, 54, 0.25);
+      color: #ffcdd2;
+      border: 1px solid #f44336;
+    }
+
+    .mp-diff-btn-group {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .mp-diff-btn {
+      flex: 1;
+      padding: 9px 4px;
+      background: #2b1810;
+      border: 1.5px solid #5d4037;
+      border-radius: 6px;
+      color: #d7ccc8;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .mp-diff-btn:hover {
+      background: #3e2723;
+      border-color: #ffd54f;
+      color: #fff;
+    }
+
+    .mp-diff-btn.active {
+      background: linear-gradient(180deg, #4e342e 0%, #2b1810 100%);
+      border-color: #ffd54f;
+      color: #ffd54f;
+      box-shadow: 0 0 10px rgba(255, 213, 79, 0.4);
+    }
+
+    .mp-diff-hint {
+      font-size: 10.5px;
+      color: #b0bec5;
+      font-style: italic;
+      line-height: 1.35;
+    }
 
     /* In-Game P2P HUD Widget */
     #p2p-hud-widget {
@@ -2599,7 +2841,7 @@
   <div id="canvas-container"></div>
 
   <!-- In-Game P2P Status & Quick Emotes -->
-  <div id="p2p-hud-widget" class="hud-panel hidden">
+  <div id="p2p-hud-widget" class="hud-panel hud-customizable hidden" data-widget-title="P2P DUEL HUD">
     <span class="p2p-dot">🟢</span>
     <span id="p2p-crew-status">⚔️ 1v1 DUEL</span>
     <button id="btn-p2p-emote-ahoy" class="p2p-emote-btn" title="Surrender!">☠️</button>
@@ -2609,13 +2851,14 @@
 
   <!-- HUD Customizer Drag & Resize Toolbar -->
   <div id="hud-customizer-bar" class="hidden">
-    <div class="customizer-info">
-      <span class="customizer-badge">🎨 HUD EDIT MODE</span>
+    <div class="customizer-info" id="hud-customizer-drag-handle" title="Drag toolbar anywhere">
+      <span class="customizer-badge">⠿ 🎨 HUD EDIT MODE</span>
       <span>Drag controls to move. Use <strong>[-]</strong> and <strong>[+]</strong> to resize without limits.</span>
     </div>
     <div class="customizer-actions">
       <button id="btn-custom-steer-toggle" class="cust-btn steer-toggle" title="Switch steering style">☸️ Wheel</button>
-      <button id="btn-custom-save" class="cust-btn save">💾 Save Layout</button>
+      <button id="btn-custom-share" class="cust-btn share" title="Copy or Share Layout Code">📋 Share</button>
+      <button id="btn-custom-save" class="cust-btn save">💾 Save</button>
       <button id="btn-custom-reset" class="cust-btn reset">🔄 Reset</button>
       <button id="btn-custom-close" class="cust-btn close">✕ Done</button>
     </div>
@@ -2642,16 +2885,13 @@
       </div>
 
       <!-- Enemy Target Health Bar (Directly below player card) -->
-      <div class="hud-panel" id="enemy-status-card">
+      <div class="hud-panel hud-customizable" id="enemy-status-card" data-widget-title="ENEMY TARGET">
         <div class="enemy-header">
           <div class="enemy-title-row">
             <span class="enemy-alert-diamond" id="enemy-diamond-icon">◆</span>
             <span class="status-title" id="enemy-ship-name" style="color: #ffcdd2;">HMS Defiance</span>
           </div>
-          <div class="enemy-actions-row">
-            <button id="btn-enemy-lock-toggle" class="enemy-lock-btn locked" title="Toggle Target Lock [L]">🎯 LOCKED</button>
-            <span class="enemy-badge" id="enemy-badge-val">ALERTED</span>
-          </div>
+          <button id="btn-enemy-lock-toggle" class="enemy-lock-btn locked" title="Toggle Target Lock [L]">LOCKED</button>
         </div>
         <div class="hp-bar-container enemy-hp-container">
           <div id="enemy-hp-fill"></div>
@@ -2664,7 +2904,7 @@
     </div>
 
     <!-- Compass & Wind Direction -->
-    <div class="hud-panel" id="compass-container">
+    <div class="hud-panel hud-customizable" id="compass-container" data-widget-title="COMPASS & WIND">
       <div id="compass-dial">
         <div id="wind-needle"></div>
       </div>
@@ -2676,7 +2916,7 @@
     </div>
 
     <!-- Right Column: Settings on Top, Mini-Map below -->
-    <div id="hud-top-right">
+    <div id="hud-top-right" class="hud-customizable" data-widget-title="MAP & SETTINGS">
       <button id="btn-settings-hud" class="hud-tool-btn">⚙️ Settings</button>
       <canvas id="minimap-canvas" width="120" height="120"></canvas>
     </div>
@@ -2794,7 +3034,7 @@
     <!-- RIGHT: Sail Lever (Speed Control with Sail Up / Down Step Buttons) -->
     <div class="hud-panel hud-customizable" id="sail-lever-panel" data-widget-title="SAILS">
       <div style="font-size: 11px; font-weight: bold; color: #ffb300; margin-bottom: 4px;">SAILS</div>
-      <button class="sail-step-btn up" id="btn-sail-up" title="Sail Up (W)">▲ SAIL UP</button>
+      <button class="sail-step-btn up" id="btn-sail-up" title="Sail Up (W)">▲</button>
       <div class="lever-track" style="margin: 6px 0;">
         <button class="sail-btn selected" id="btn-sail-2" title="Full Sail (W)">FULL</button>
         <div class="lever-notch active" id="notch-2"></div>
@@ -2803,7 +3043,7 @@
         <button class="sail-btn" id="btn-sail-0" title="Furled / Stop (S)">FURL</button>
         <div class="lever-notch" id="notch-0"></div>
       </div>
-      <button class="sail-step-btn down" id="btn-sail-down" title="Sail Down / Stop (S)">▼ SAIL DOWN</button>
+      <button class="sail-step-btn down" id="btn-sail-down" title="Sail Down / Stop (S)">▼</button>
     </div>
   </div>
 
@@ -2946,7 +3186,21 @@
           <button id="btn-settings-audio" class="setting-toggle-btn active">🔊 Audio: ON</button>
         </div>
 
-        <!-- Setting 2: Fullscreen Mode -->
+        <!-- Setting 2: Graphics Quality & Performance -->
+        <div class="setting-row graphics-setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Graphics Quality & Performance</div>
+            <div id="graphics-setting-desc" class="setting-desc">Adjust resolution & visual effects to prevent lag on your device.</div>
+          </div>
+          <div class="graphics-quality-group" id="graphics-quality-group">
+            <button type="button" class="gfx-btn" data-quality="low" title="⚡ Low: Maximum FPS for older / budget phones">⚡ Low</button>
+            <button type="button" class="gfx-btn" data-quality="medium" title="⚖️ Medium: Balanced for most smartphones">⚖️ Med</button>
+            <button type="button" class="gfx-btn" data-quality="high" title="✨ High: Crisp visuals for gaming phones / PC">✨ High</button>
+            <button type="button" class="gfx-btn" data-quality="ultra" title="💎 Ultra: Maximum detail for powerful PCs / iPads">💎 Ultra</button>
+          </div>
+        </div>
+
+        <!-- Setting 3: Fullscreen Mode -->
         <div class="setting-row">
           <div class="setting-info">
             <div class="setting-title">Fullscreen Mode</div>
@@ -2972,6 +3226,15 @@
           </div>
           <button id="btn-open-customizer" class="setting-action-btn primary">🎨 Customize Controls</button>
         </div>
+
+        <!-- Setting 5: Quit to Main Menu -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Quit to Main Menu</div>
+            <div class="setting-desc">Abandon current voyage or naval duel and return to the main title screen.</div>
+          </div>
+          <button id="btn-settings-quit" class="setting-action-btn danger" style="background: linear-gradient(180deg, #b71c1c 0%, #7f0000 100%); border-color: #ef5350; color: #fff; box-shadow: 0 2px 8px rgba(183, 28, 28, 0.4);">🚪 Quit Game</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2994,6 +3257,20 @@
       <!-- Host Panel -->
       <div id="mp-host-panel" class="mp-panel">
         <p class="mp-panel-desc">Create a duel arena and share the 5-letter room code with the rival captain:</p>
+
+        <!-- Duel Difficulty Mode Selector (Host chooses, syncs to rival) -->
+        <div class="mp-diff-section">
+          <div class="mp-diff-header">
+            <span class="mp-diff-label">⚔️ DUEL DIFFICULTY & COMBAT RULES:</span>
+            <span id="mp-host-diff-badge" class="mp-diff-badge medium">🟡 NORMAL</span>
+          </div>
+          <div class="mp-diff-btn-group">
+            <button type="button" class="mp-diff-btn" data-diff="easy" title="Casual Naval Duel (High armor, faster kills)">🟢 EASY</button>
+            <button type="button" class="mp-diff-btn active" data-diff="medium" title="Balanced Tactical Combat (3–4 solid broadside volleys)">🟡 NORMAL</button>
+            <button type="button" class="mp-diff-btn" data-diff="hard" title="Hardcore Fleet War (Ships take less damage, requires multiple tactical volleys)">🔴 HARD</button>
+          </div>
+          <div class="mp-diff-hint" id="mp-host-diff-hint">Balanced combat: 3–4 solid broadside volleys required to sink.</div>
+        </div>
 
         <div id="mp-host-idle">
           <button id="btn-create-host" class="mp-action-btn primary">⚓ CREATE DUEL ROOM</button>
@@ -3029,11 +3306,26 @@
         <div class="mp-connected-box" style="padding: 18px; background: rgba(30, 20, 10, 0.95); border: 2px solid #ffd54f; border-radius: 14px; margin-top: 10px; text-align: center;">
           <div style="font-size:36px;">⚔️</div>
           <div style="font-size:19px;font-weight:bold;color:#ffd54f;margin:8px 0;">RIVAL CAPTAIN READY FOR BATTLE!</div>
-          <p style="font-size:13px;color:#e0e0e0;margin-bottom:14px;line-height:1.4;">
+          <p style="font-size:13px;color:#e0e0e0;margin-bottom:12px;line-height:1.4;">
             P2P duel connection established.<br>
             <strong style="color:#81c784;">No AI Bots</strong> — 1v1 naval warship duel.<br>
             <strong style="color:#ffb300;">Last ship standing will be the winner!</strong>
           </p>
+
+          <!-- Connected Difficulty Display & Selection -->
+          <div class="mp-diff-section connected" style="margin: 0 auto 14px auto;">
+            <div class="mp-diff-header">
+              <span class="mp-diff-label">⚔️ DUEL DIFFICULTY:</span>
+              <span id="mp-conn-diff-badge" class="mp-diff-badge medium">🟡 NORMAL</span>
+            </div>
+            <div class="mp-diff-btn-group">
+              <button type="button" class="mp-diff-btn" data-diff="easy">🟢 EASY</button>
+              <button type="button" class="mp-diff-btn active" data-diff="medium">🟡 NORMAL</button>
+              <button type="button" class="mp-diff-btn" data-diff="hard">🔴 HARD</button>
+            </div>
+            <div class="mp-diff-hint" id="mp-conn-diff-hint">Synchronized across both captains — changes apply in real-time.</div>
+          </div>
+
           <button id="btn-start-multiplayer-game" class="mp-action-btn primary" style="font-size: 15px; padding: 12px 24px; width: 100%;">COMMENCE BATTLE ⚔️</button>
         </div>
       </div>
@@ -3090,6 +3382,37 @@
         <button class="salvage-btn loot" id="btn-defeat-menu" style="flex: 1; background: linear-gradient(180deg, #37474f, #212121); border: 2px solid #90a4ae; font-size: 14px; padding: 13px 16px; cursor: pointer; color: #eceff1; font-weight: bold; border-radius: 6px;">
           🏠 MAIN MENU
         </button>
+      </div>
+    </div>
+  <!-- HUD Share / Import Modal -->
+  <div id="hud-share-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 480px; text-align: left; background: rgba(22, 14, 10, 0.97); border: 2px solid #ffd54f; box-shadow: 0 12px 36px rgba(0,0,0,0.9), 0 0 24px rgba(255, 213, 79, 0.35);">
+      <h2 style="color: #ffd54f; font-size: 20px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+        <span>📋</span> Share & Import HUD Layout
+      </h2>
+      <p style="color: #bcaaa4; font-size: 13px; margin-bottom: 16px; line-height: 1.4;">
+        Export your custom button layout code to share with crewmates, or paste a code below to instantly load a custom HUD setup!
+      </p>
+
+      <div style="margin-bottom: 14px;">
+        <label style="display: block; font-size: 11px; font-weight: bold; color: #ffd54f; margin-bottom: 4px;">YOUR LAYOUT CODE (COPIED TO CLIPBOARD):</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="share-layout-output" readonly style="flex: 1; padding: 10px 12px; background: #1c100a; border: 1.5px solid #8d6e63; border-radius: 6px; color: #ffe082; font-family: monospace; font-size: 12px;" />
+          <button id="btn-copy-layout-code" class="copy-code-btn" style="padding: 0 16px;">📋 Copy</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 18px;">
+        <label style="display: block; font-size: 11px; font-weight: bold; color: #81c784; margin-bottom: 4px;">IMPORT / PASTE LAYOUT CODE:</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="import-layout-input" placeholder="Paste layout code here..." style="flex: 1; padding: 10px 12px; background: #1c100a; border: 1.5px solid #4caf50; border-radius: 6px; color: #fff; font-family: monospace; font-size: 12px;" />
+          <button id="btn-apply-imported-layout" class="mp-action-btn primary" style="padding: 8px 16px; font-size: 12px; border-radius: 6px;">📥 Apply</button>
+        </div>
+        <div id="import-layout-status" style="font-size: 11.5px; margin-top: 6px; min-height: 16px; font-weight: bold;"></div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button id="btn-close-share-modal" class="cust-btn close" style="padding: 8px 20px; font-size: 13px;">✕ Close</button>
       </div>
     </div>
   </div>

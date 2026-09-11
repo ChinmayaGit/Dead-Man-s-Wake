@@ -15,10 +15,116 @@ export const SAIL_CAMERA_PRESETS = {
   2: { distance: 74.0, height: 16.0, fov: 65, lookHeight: 4.8 }   // Full Sail: complete panoramic zoom out to see the high seas
 };
 
+// Graphics Quality Presets for Mobile & Desktop Performance
+export const GRAPHICS_PRESETS = {
+  low: {
+    id: 'low',
+    name: 'Performance',
+    emoji: '⚡',
+    badge: '⚡ Low',
+    desc: 'Max 60 FPS for older/budget phones. Resolution 0.85x, 36-segment ocean, reduced particle trails.',
+    dprMobile: 0.85,
+    dprDesktop: 1.0,
+    oceanSegments: 36,
+    wakeMax: 20,
+    minimapInterval: 4, // ~15 FPS
+    fogFar: 550,
+    particleMult: 0.5
+  },
+  medium: {
+    id: 'medium',
+    name: 'Balanced',
+    emoji: '⚖️',
+    badge: '⚖️ Med',
+    desc: 'Optimized 60 FPS balance. Recommended default for mobile phones & tablets.',
+    dprMobile: 1.15,
+    dprDesktop: 1.25,
+    oceanSegments: 54,
+    wakeMax: 36,
+    minimapInterval: 2, // ~30 FPS
+    fogFar: 750,
+    particleMult: 0.8
+  },
+  high: {
+    id: 'high',
+    name: 'High Quality',
+    emoji: '✨',
+    badge: '✨ High',
+    desc: 'Crisp resolution & realistic ocean waves. Recommended for modern PCs & fast devices.',
+    dprMobile: 1.35,
+    dprDesktop: 1.6,
+    oceanSegments: 85,
+    wakeMax: 70,
+    minimapInterval: 1, // 60 FPS
+    fogFar: 900,
+    particleMult: 1.0
+  },
+  ultra: {
+    id: 'ultra',
+    name: 'Ultra Fidelity',
+    emoji: '💎',
+    badge: '💎 Ultra',
+    desc: 'Native Retina/4K resolution & dense water mesh. For high-end gaming PCs & M-series iPads.',
+    dprMobile: 1.75,
+    dprDesktop: 2.0,
+    oceanSegments: 110,
+    wakeMax: 100,
+    minimapInterval: 1, // 60 FPS
+    fogFar: 1100,
+    particleMult: 1.25
+  }
+};
+
+// Default Custom Layout for all Mobile users
+export const DEFAULT_MOBILE_LAYOUT = {
+  'helm-container': { tx: 91, ty: -66, scale: 1.8 },
+  'port-cannon-panel': { tx: -147, ty: -240, scale: 1.8 },
+  'starboard-cannon-panel': { tx: 22, ty: -60, scale: 1.7 },
+  'dodge-back-panel': { tx: 406, ty: -200, scale: 1.8 },
+  'dodge-fwd-panel': { tx: -333, ty: -57, scale: 1.6 },
+  'sail-lever-panel': { tx: -29, ty: -59, scale: 1.6 },
+  'status-card': { tx: 0, ty: 0, scale: 1.0 },
+  'enemy-status-card': { tx: 184, ty: -66, scale: 1.1 },
+  'compass-container': { tx: -17, ty: -3, scale: 1.2 },
+  'hud-top-right': { tx: -15, ty: 18, scale: 1.4 },
+  'p2p-hud-widget': { tx: -107, ty: -58, scale: 1.0 }
+};
+
+// Default Layout for Desktop users
+export const DEFAULT_DESKTOP_LAYOUT = {
+  'helm-container': { tx: 0, ty: 0, scale: 1.0 },
+  'port-cannon-panel': { tx: 0, ty: 0, scale: 1.0 },
+  'starboard-cannon-panel': { tx: 0, ty: 0, scale: 1.0 },
+  'dodge-back-panel': { tx: 0, ty: 0, scale: 1.0 },
+  'dodge-fwd-panel': { tx: 0, ty: 0, scale: 1.0 },
+  'sail-lever-panel': { tx: 0, ty: 0, scale: 1.0 },
+  'status-card': { tx: 0, ty: 0, scale: 1.0 },
+  'enemy-status-card': { tx: 0, ty: 0, scale: 1.0 },
+  'compass-container': { tx: 0, ty: 0, scale: 1.0 },
+  'hud-top-right': { tx: 0, ty: 0, scale: 1.0 },
+  'p2p-hud-widget': { tx: 0, ty: 0, scale: 1.0 }
+};
+
 class Game {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.lastTime = performance.now();
+
+    // Device Detection (Mobile Phone/Tablet vs Desktop)
+    this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+
+    // Graphics & Performance Preset System
+    let savedQuality = null;
+    try {
+      savedQuality = localStorage.getItem('deadmanswake_graphics_quality');
+    } catch (e) {}
+    if (!savedQuality || !GRAPHICS_PRESETS[savedQuality]) {
+      // Default to medium (Balanced) for mobile to eliminate lag, high for desktop
+      savedQuality = this.isMobile ? 'medium' : 'high';
+    }
+    this.graphicsQuality = savedQuality;
+    const initialGfxPreset = GRAPHICS_PRESETS[this.graphicsQuality];
+    this.minimapThrottleInterval = initialGfxPreset.minimapInterval;
 
     // Global Wind (North-East 14 knots)
     this.wind = {
@@ -97,7 +203,8 @@ class Game {
   initScene() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x7ec8f2); // Sky blue
-    this.scene.fog = new THREE.Fog(0x9bd7f5, 120, 800);
+    const preset = GRAPHICS_PRESETS[this.graphicsQuality] || (this.isMobile ? GRAPHICS_PRESETS.medium : GRAPHICS_PRESETS.high);
+    this.scene.fog = new THREE.Fog(0x9bd7f5, 120, preset.fogFar);
 
     this.camera = new THREE.PerspectiveCamera(
       54,
@@ -110,9 +217,10 @@ class Game {
     this.camera.position.set(0, 11, 26);
     this.camera.lookAt(0, 3.5, -6);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    const targetDpr = this.isMobile ? preset.dprMobile : preset.dprDesktop;
+    this.renderer = new THREE.WebGLRenderer({ antialias: !this.isMobile && this.graphicsQuality !== 'low', powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, targetDpr));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.2;
     this.container.appendChild(this.renderer.domElement);
@@ -133,6 +241,9 @@ class Game {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      const activePreset = GRAPHICS_PRESETS[this.graphicsQuality] || (this.isMobile ? GRAPHICS_PRESETS.medium : GRAPHICS_PRESETS.high);
+      const activeDpr = this.isMobile ? activePreset.dprMobile : activePreset.dprDesktop;
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, activeDpr));
     });
   }
 
@@ -152,16 +263,19 @@ class Game {
   }
 
   initGameObjects() {
+    const preset = GRAPHICS_PRESETS[this.graphicsQuality] || (this.isMobile ? GRAPHICS_PRESETS.medium : GRAPHICS_PRESETS.high);
     this.sound = new SoundController();
-    this.ocean = new Ocean(this.scene);
+    this.ocean = new Ocean(this.scene, 1500, preset.oceanSegments);
     this.archipelago = new Archipelago(this.scene);
 
     // Player Flagship (Dead-Man-s-Wake - 3D Pirate Galleon Asset)
     this.playerShip = new Ship(this.scene, this.ocean, true, 'ship-pirate-large.glb');
+    this.playerShip.setWakeMax(preset.wakeMax);
     this.playerShip.position.set(0, 0, 0);
 
     // Combat System
     this.combat = new CombatSystem(this.scene, this.ocean, this.sound);
+    this.combat.particleMultiplier = preset.particleMult;
     this.combat.onShipHit = (hitShip, damage, hitDist) => {
       const hitEnemy = this.enemies.find(e => e.ship === hitShip);
       if (hitEnemy) {
@@ -206,7 +320,12 @@ class Game {
     // Collision & Ramming System (Islands, Ship-to-Ship, Front Impact Damage)
     this.collision = new CollisionSystem(this.scene, this.archipelago, this.sound, this.combat, {
       onCameraShake: (intensity, duration) => this.triggerCameraShake(intensity, duration),
-      onPlayerDamage: (dmg) => this.triggerDamageFeedback(dmg)
+      onPlayerDamage: (dmg) => this.triggerDamageFeedback(dmg),
+      onEnemyDamage: (hitShip, dmg, isRam = false) => {
+        if (this.isMultiplayerGame && this.multiplayer && hitShip === this.multiplayer.remoteShip) {
+          this.multiplayer.notifyCannonHit(dmg, isRam);
+        }
+      }
     });
   }
 
@@ -724,7 +843,8 @@ class Game {
     const enemyStatusCard = document.getElementById('enemy-status-card');
     if (enemyStatusCard) {
       enemyStatusCard.addEventListener('click', (e) => {
-        if (!e.target.closest('#btn-enemy-lock-toggle')) {
+        if (this.isCustomizingHUD) return;
+        if (!e.target.closest('#btn-enemy-lock-toggle') && !e.target.closest('.widget-edit-controls')) {
           this.toggleTargetLock();
         }
       });
@@ -761,6 +881,19 @@ class Game {
       if (settingsModal) settingsModal.classList.add('hidden');
     });
 
+    const btnSettingsQuit = document.getElementById('btn-settings-quit');
+    if (btnSettingsQuit) {
+      btnSettingsQuit.addEventListener('click', () => {
+        if (settingsModal) settingsModal.classList.add('hidden');
+        if (this.isMultiplayerGame) {
+          this.returnToMainMenu();
+        } else {
+          this.showSplashMenu();
+        }
+        this.showToast('🚪 Returned to Main Menu');
+      });
+    }
+
     // Multiplayer Modal (accessible from main menu)
     const btnCloseMultiplayer = document.getElementById('btn-close-multiplayer');
     const openMultiplayer = () => {
@@ -788,28 +921,33 @@ class Game {
     if (muteBtn) muteBtn.addEventListener('click', toggleSound);
     if (settingsAudioBtn) settingsAudioBtn.addEventListener('click', toggleSound);
 
+    // Graphics Quality & Performance Settings Selector
+    this.initGraphicsSettings();
+
     // Sail Step Controls (Up / Down for mobile & desktop)
     const btnSailUp = document.getElementById('btn-sail-up');
     const btnSailDown = document.getElementById('btn-sail-down');
+    let lastSailStepTime = 0;
+    const triggerSailStep = (delta, e) => {
+      if (e) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+      }
+      const now = Date.now();
+      if (now - lastSailStepTime < 250) return;
+      lastSailStepTime = now;
+      this.changeSail(this.playerShip.sailState + delta);
+    };
+
     if (btnSailUp) {
-      btnSailUp.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.changeSail(Math.min(2, this.playerShip.sailState + 1));
-      });
-      btnSailUp.addEventListener('touchstart', (e) => {
-        e.stopPropagation();
-        this.changeSail(Math.min(2, this.playerShip.sailState + 1));
-      }, { passive: true });
+      btnSailUp.addEventListener('pointerdown', (e) => triggerSailStep(1, e));
+      btnSailUp.addEventListener('touchstart', (e) => triggerSailStep(1, e), { passive: false });
+      btnSailUp.addEventListener('click', (e) => triggerSailStep(1, e));
     }
     if (btnSailDown) {
-      btnSailDown.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.changeSail(Math.max(0, this.playerShip.sailState - 1));
-      });
-      btnSailDown.addEventListener('touchstart', (e) => {
-        e.stopPropagation();
-        this.changeSail(Math.max(0, this.playerShip.sailState - 1));
-      }, { passive: true });
+      btnSailDown.addEventListener('pointerdown', (e) => triggerSailStep(-1, e));
+      btnSailDown.addEventListener('touchstart', (e) => triggerSailStep(-1, e), { passive: false });
+      btnSailDown.addEventListener('click', (e) => triggerSailStep(-1, e));
     }
 
     [0, 1, 2].forEach((state) => {
@@ -1072,6 +1210,92 @@ class Game {
     }
   }
 
+  initGraphicsSettings() {
+    const buttons = document.querySelectorAll('.gfx-btn');
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const q = btn.getAttribute('data-quality');
+        if (q && GRAPHICS_PRESETS[q]) {
+          this.setGraphicsQuality(q, true);
+        }
+      });
+    });
+    this.updateGraphicsUI();
+  }
+
+  setGraphicsQuality(qualityId, notify = false) {
+    if (!GRAPHICS_PRESETS[qualityId]) qualityId = this.isMobile ? 'medium' : 'high';
+    this.graphicsQuality = qualityId;
+    const preset = GRAPHICS_PRESETS[qualityId];
+
+    try {
+      localStorage.setItem('deadmanswake_graphics_quality', qualityId);
+    } catch (e) {}
+
+    // 1. Update Renderer Pixel Ratio & Size
+    if (this.renderer) {
+      const targetDpr = this.isMobile ? preset.dprMobile : preset.dprDesktop;
+      const effectiveDpr = Math.min(window.devicePixelRatio || 1, targetDpr);
+      this.renderer.setPixelRatio(effectiveDpr);
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // 2. Update Ocean Tessellation / Segments
+    if (this.ocean && typeof this.ocean.setSegments === 'function') {
+      this.ocean.setSegments(preset.oceanSegments);
+    }
+
+    // 3. Update Ship Wake Particles
+    if (this.playerShip && typeof this.playerShip.setWakeMax === 'function') {
+      this.playerShip.setWakeMax(preset.wakeMax);
+    }
+    if (this.enemies) {
+      this.enemies.forEach((e) => {
+        if (e.ship && typeof e.ship.setWakeMax === 'function') {
+          e.ship.setWakeMax(Math.round(preset.wakeMax * 0.7));
+        }
+      });
+    }
+    if (this.multiplayer && this.multiplayer.remoteShip && typeof this.multiplayer.remoteShip.setWakeMax === 'function') {
+      this.multiplayer.remoteShip.setWakeMax(preset.wakeMax);
+    }
+
+    // 4. Update Fog Distance
+    if (this.scene && this.scene.fog) {
+      this.scene.fog.far = preset.fogFar;
+    }
+
+    // 5. Update Minimap Throttling Interval
+    this.minimapThrottleInterval = preset.minimapInterval;
+
+    // 6. Update Combat Particle Multiplier
+    if (this.combat) {
+      this.combat.particleMultiplier = preset.particleMult;
+    }
+
+    // 7. Update Settings UI
+    this.updateGraphicsUI();
+
+    if (notify) {
+      this.showToast(`${preset.emoji} Graphics set to ${preset.name}`);
+    }
+  }
+
+  updateGraphicsUI() {
+    const descEl = document.getElementById('graphics-setting-desc');
+    const preset = GRAPHICS_PRESETS[this.graphicsQuality] || (this.isMobile ? GRAPHICS_PRESETS.medium : GRAPHICS_PRESETS.high);
+    if (descEl) {
+      descEl.textContent = preset.desc;
+    }
+
+    const buttons = document.querySelectorAll('.gfx-btn');
+    buttons.forEach((btn) => {
+      const q = btn.getAttribute('data-quality');
+      btn.classList.toggle('active', q === this.graphicsQuality);
+    });
+  }
+
   initDifficulty() {
     this.setDifficulty('medium', false);
   }
@@ -1079,9 +1303,9 @@ class Game {
   setDifficulty(diff, notifyMultiplayer = true) {
     this.difficulty = diff || 'medium';
     const settings = {
-      easy: { playerMult: 1.5, enemyMult: 0.6, label: 'EASY' },
-      medium: { playerMult: 1.0, enemyMult: 1.0, label: 'MED' },
-      hard: { playerMult: 0.8, enemyMult: 1.5, label: 'HARD' }
+      easy: { playerMult: 1.3, enemyMult: 0.65, label: 'EASY', desc: 'Casual duel: higher armor resistance, fast action.' },
+      medium: { playerMult: 1.0, enemyMult: 1.0, label: 'MED', desc: 'Balanced combat: 3–4 solid broadside volleys required to sink.' },
+      hard: { playerMult: 0.7, enemyMult: 1.35, label: 'HARD', desc: 'Hardcore war: ships take reduced damage, requiring 5+ volleys & intense aiming.' }
     };
     const s = settings[this.difficulty] || settings.medium;
     if (this.combat) {
@@ -1111,8 +1335,35 @@ class Game {
         c.classList.remove('selected');
       }
     });
-    if (notifyMultiplayer && this.multiplayer && this.multiplayer.isConnected && this.multiplayer.role === 'host') {
+
+    // Sync Multiplayer Difficulty buttons and badges
+    document.querySelectorAll('.mp-diff-btn').forEach((btn) => {
+      if (btn.getAttribute('data-diff') === this.difficulty) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    const hostBadge = document.getElementById('mp-host-diff-badge');
+    const connBadge = document.getElementById('mp-conn-diff-badge');
+    const hostHint = document.getElementById('mp-host-diff-hint');
+    const connHint = document.getElementById('mp-conn-diff-hint');
+    const diffIcon = this.difficulty === 'easy' ? '🟢' : (this.difficulty === 'hard' ? '🔴' : '🟡');
+    const badgeText = `${diffIcon} ${s.label === 'MED' ? 'NORMAL' : s.label}`;
+
+    [hostBadge, connBadge].forEach((b) => {
+      if (b) {
+        b.textContent = badgeText;
+        b.className = `mp-diff-badge ${this.difficulty}`;
+      }
+    });
+    if (hostHint) hostHint.textContent = s.desc;
+    if (connHint) connHint.textContent = s.desc;
+
+    if (notifyMultiplayer && this.multiplayer && this.multiplayer.isConnected) {
       this.multiplayer.send({ type: 'handshake', difficulty: this.difficulty });
+      this.showToast(`⚔️ Duel Difficulty set to: ${s.label === 'MED' ? 'NORMAL' : s.label}`);
     }
   }
 
@@ -1126,19 +1377,89 @@ class Game {
     const fsBtn = document.getElementById('btn-toggle-fullscreen');
     if (!fsBtn) return;
 
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    const isFullscreenActive = () => {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement ||
+        document.body.classList.contains('ios-fullscreen')
+      );
+    };
+
     const updateFsText = () => {
-      fsBtn.textContent = document.fullscreenElement ? '⛶ Exit Fullscreen' : '⛶ Enter Fullscreen';
+      const active = isFullscreenActive();
+      fsBtn.textContent = active ? '⛶ Exit Fullscreen' : '⛶ Enter Fullscreen';
+    };
+
+    const enableIOSFullscreen = () => {
+      document.documentElement.classList.add('ios-fullscreen');
+      document.body.classList.add('ios-fullscreen');
+      window.scrollTo(0, 1);
+      updateFsText();
+      this.showToast("📲 iOS Tip: Tap Share [⎋] → 'Add to Home Screen' for borderless fullscreen!");
+    };
+
+    const disableIOSFullscreen = () => {
+      document.documentElement.classList.remove('ios-fullscreen');
+      document.body.classList.remove('ios-fullscreen');
+      updateFsText();
+    };
+
+    const enterFS = () => {
+      const el = document.documentElement;
+      const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (rfs && !isIOS) {
+        rfs.call(el).catch(() => {
+          enableIOSFullscreen();
+        });
+      } else {
+        enableIOSFullscreen();
+      }
+    };
+
+    const exitFS = () => {
+      const efs = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+      if (efs && !document.body.classList.contains('ios-fullscreen')) {
+        efs.call(document).catch(() => {});
+      }
+      disableIOSFullscreen();
     };
 
     fsBtn.addEventListener('click', () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
+      if (!isFullscreenActive()) {
+        enterFS();
       } else {
-        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+        exitFS();
       }
     });
 
-    document.addEventListener('fullscreenchange', updateFsText);
+    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach((evt) => {
+      document.addEventListener(evt, updateFsText);
+    });
+  }
+
+  showToast(message, duration = 4000) {
+    let toast = document.getElementById('game-toast-notification');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'game-toast-notification';
+      toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(18,12,8,0.95);border:1.5px solid #ffd54f;color:#ffe082;padding:10px 22px;border-radius:20px;font-size:13px;font-weight:bold;z-index:999999;box-shadow:0 6px 22px rgba(0,0,0,0.85);pointer-events:none;transition:opacity 0.35s ease, transform 0.35s ease;opacity:0;text-align:center;max-width:90vw;';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+    if (this._toastTimer) clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => {
+      if (toast) {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(-10px)';
+      }
+    }, duration);
   }
 
   initCustomizer() {
@@ -1151,7 +1472,11 @@ class Game {
       'dodge-back-panel',
       'dodge-fwd-panel',
       'sail-lever-panel',
-      'status-card'
+      'status-card',
+      'enemy-status-card',
+      'compass-container',
+      'hud-top-right',
+      'p2p-hud-widget'
     ];
 
     const STORAGE_KEY = 'deadmanswake_hud_layout_v3';
@@ -1168,12 +1493,33 @@ class Game {
       el.dataset.hudScale = scale;
       el.style.transform = `translate3d(${tx}px, ${ty}px, 0px) scale(${scale})`;
       el.style.transformOrigin = 'center center';
+
+      // Keep zoom +/- container at unscaled default size (100%) so it does not zoom!
+      const ctrlBar = el.querySelector('.widget-edit-controls');
+      if (ctrlBar) {
+        const invScale = scale > 0.01 ? (1.0 / scale) : 1.0;
+        ctrlBar.style.transform = `translateX(-50%) scale(${invScale})`;
+      }
     };
+
+    const MOBILE_DEFAULT_SEEDED_KEY = 'deadmanswake_mobile_default_v4';
 
     let savedLayout = null;
     try {
       savedLayout = JSON.parse(localStorage.getItem(STORAGE_KEY));
     } catch (e) {}
+
+    // Ensure all mobile users get the requested mobile layout as default!
+    if (this.isMobile) {
+      const isSeeded = localStorage.getItem(MOBILE_DEFAULT_SEEDED_KEY);
+      if (!isSeeded) {
+        savedLayout = JSON.parse(JSON.stringify(DEFAULT_MOBILE_LAYOUT));
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(savedLayout));
+          localStorage.setItem(MOBILE_DEFAULT_SEEDED_KEY, 'true');
+        } catch (e) {}
+      }
+    }
 
     // Auto-migrate legacy unified combat-panel layout to separate panels
     if (savedLayout && savedLayout['combat-panel']) {
@@ -1215,17 +1561,22 @@ class Game {
       delete savedLayout['dodge-panel'];
     }
 
+    const defaultLayout = this.isMobile ? DEFAULT_MOBILE_LAYOUT : DEFAULT_DESKTOP_LAYOUT;
+
     customizableWidgets.forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
 
-      // Apply saved position & scale or defaults
+      // Apply saved position & scale or device defaults
       if (savedLayout && savedLayout[id]) {
         const item = savedLayout[id];
         const tx = typeof item.tx === 'number' ? item.tx : 0;
         const ty = typeof item.ty === 'number' ? item.ty : 0;
         const scale = typeof item.scale === 'number' ? item.scale : 1.0;
         applyWidgetTransform(el, tx, ty, scale);
+      } else if (defaultLayout && defaultLayout[id]) {
+        const item = defaultLayout[id];
+        applyWidgetTransform(el, item.tx, item.ty, item.scale);
       } else {
         applyWidgetTransform(el, 0, 0, 1.0);
       }
@@ -1323,23 +1674,126 @@ class Game {
       el.addEventListener('touchstart', onPointerDown, { passive: false });
     });
 
-    // Customizer toolbar buttons
+    // Customizer toolbar buttons & draggable toolbar logic
     const openBtn = document.getElementById('btn-open-customizer');
     const bar = document.getElementById('hud-customizer-bar');
     const saveBtn = document.getElementById('btn-custom-save');
     const resetBtn = document.getElementById('btn-custom-reset');
     const closeBtn = document.getElementById('btn-custom-close');
+    const shareBtn = document.getElementById('btn-custom-share');
+
+    // Share / Import Modal Elements
+    const shareModal = document.getElementById('hud-share-modal');
+    const shareOutput = document.getElementById('share-layout-output');
+    const copyCodeBtn = document.getElementById('btn-copy-layout-code');
+    const importInput = document.getElementById('import-layout-input');
+    const applyImportBtn = document.getElementById('btn-apply-imported-layout');
+    const importStatus = document.getElementById('import-layout-status');
+    const closeShareBtn = document.getElementById('btn-close-share-modal');
+
+    // Draggable HUD Customizer Bar Logic
+    let barTx = 0;
+    let barTy = 0;
+    try {
+      const savedBarPos = JSON.parse(localStorage.getItem('deadmanswake_hud_bar_pos'));
+      if (savedBarPos) {
+        barTx = typeof savedBarPos.x === 'number' ? savedBarPos.x : 0;
+        barTy = typeof savedBarPos.y === 'number' ? savedBarPos.y : 0;
+      }
+    } catch (e) {}
+
+    const applyBarTransform = (x, y) => {
+      barTx = x;
+      barTy = y;
+      if (bar) {
+        bar.style.transform = `translate3d(calc(-50% + ${x}px), ${y}px, 0px)`;
+      }
+    };
+
+    if (bar && (barTx !== 0 || barTy !== 0)) {
+      applyBarTransform(barTx, barTy);
+    }
+
+    let isDraggingBar = false;
+    let barStartX = 0, barStartY = 0;
+    let barBaseX = 0, barBaseY = 0;
+
+    const onBarPointerMove = (e) => {
+      if (!isDraggingBar || !this.isCustomizingHUD) return;
+      e.preventDefault();
+      const pt = e.touches ? e.touches[0] : e;
+      const dx = pt.clientX - barStartX;
+      const dy = pt.clientY - barStartY;
+      applyBarTransform(Math.round(barBaseX + dx), Math.round(barBaseY + dy));
+    };
+
+    const onBarPointerUp = () => {
+      if (!isDraggingBar) return;
+      isDraggingBar = false;
+      if (bar) bar.classList.remove('is-dragging');
+      try {
+        localStorage.setItem('deadmanswake_hud_bar_pos', JSON.stringify({ x: barTx, y: barTy }));
+      } catch (e) {}
+      window.removeEventListener('mousemove', onBarPointerMove);
+      window.removeEventListener('mouseup', onBarPointerUp);
+      window.removeEventListener('touchmove', onBarPointerMove);
+      window.removeEventListener('touchend', onBarPointerUp);
+      window.removeEventListener('touchcancel', onBarPointerUp);
+    };
+
+    const onBarPointerDown = (e) => {
+      if (!this.isCustomizingHUD) return;
+      if (e.target.closest('.customizer-actions') || e.target.closest('button')) return;
+      e.preventDefault();
+      isDraggingBar = true;
+      if (bar) bar.classList.add('is-dragging');
+      const pt = e.touches ? e.touches[0] : e;
+      barStartX = pt.clientX;
+      barStartY = pt.clientY;
+      barBaseX = barTx;
+      barBaseY = barTy;
+
+      window.addEventListener('mousemove', onBarPointerMove, { passive: false });
+      window.addEventListener('mouseup', onBarPointerUp);
+      window.addEventListener('touchmove', onBarPointerMove, { passive: false });
+      window.addEventListener('touchend', onBarPointerUp);
+      window.addEventListener('touchcancel', onBarPointerUp);
+    };
+
+    if (bar) {
+      bar.addEventListener('mousedown', onBarPointerDown);
+      bar.addEventListener('touchstart', onBarPointerDown, { passive: false });
+    }
+
+    const getCurrentLayoutObject = () => {
+      const layout = {};
+      customizableWidgets.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          layout[id] = {
+            tx: parseFloat(el.dataset.hudTx) || 0,
+            ty: parseFloat(el.dataset.hudTy) || 0,
+            scale: parseFloat(el.dataset.hudScale) || 1.0
+          };
+        }
+      });
+      return layout;
+    };
 
     const revertToSaved = () => {
       let saved = null;
       try {
         saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
       } catch (e) {}
+      const targetDefaults = this.isMobile ? DEFAULT_MOBILE_LAYOUT : DEFAULT_DESKTOP_LAYOUT;
       customizableWidgets.forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
         if (saved && saved[id]) {
           const item = saved[id];
+          applyWidgetTransform(el, item.tx || 0, item.ty || 0, item.scale || 1.0);
+        } else if (targetDefaults && targetDefaults[id]) {
+          const item = targetDefaults[id];
           applyWidgetTransform(el, item.tx || 0, item.ty || 0, item.scale || 1.0);
         } else {
           applyWidgetTransform(el, 0, 0, 1.0);
@@ -1361,38 +1815,39 @@ class Game {
 
     if (saveBtn) {
       saveBtn.addEventListener('click', () => {
-        const layout = {};
-        customizableWidgets.forEach((id) => {
-          const el = document.getElementById(id);
-          if (el) {
-            layout[id] = {
-              tx: parseFloat(el.dataset.hudTx) || 0,
-              ty: parseFloat(el.dataset.hudTy) || 0,
-              scale: parseFloat(el.dataset.hudScale) || 1.0
-            };
-          }
-        });
+        const layout = getCurrentLayoutObject();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
         this.isCustomizingHUD = false;
         document.body.classList.remove('hud-editing');
         if (bar) bar.classList.add('hidden');
+        this.showToast('💾 Layout saved successfully!');
       });
     }
 
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
         localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem('deadmanswake_hud_bar_pos');
+        applyBarTransform(0, 0);
+        const targetDefaults = this.isMobile ? DEFAULT_MOBILE_LAYOUT : DEFAULT_DESKTOP_LAYOUT;
         customizableWidgets.forEach((id) => {
           const el = document.getElementById(id);
           if (el) {
-            applyWidgetTransform(el, 0, 0, 1.0);
+            const def = targetDefaults[id] || { tx: 0, ty: 0, scale: 1.0 };
+            applyWidgetTransform(el, def.tx, def.ty, def.scale);
             const lbl = el.querySelector('.scale-label');
-            if (lbl) lbl.textContent = '100%';
+            if (lbl) lbl.textContent = `${Math.round(def.scale * 100)}%`;
           }
         });
+        if (this.isMobile) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_MOBILE_LAYOUT));
+          } catch (e) {}
+        }
         this.isCustomizingHUD = false;
         document.body.classList.remove('hud-editing');
         if (bar) bar.classList.add('hidden');
+        this.showToast(this.isMobile ? '🔄 Layout reset to mobile default!' : '🔄 Layout reset to default!');
       });
     }
 
@@ -1402,6 +1857,100 @@ class Game {
         this.isCustomizingHUD = false;
         document.body.classList.remove('hud-editing');
         if (bar) bar.classList.add('hidden');
+      });
+    }
+
+    // Share / Export Layout
+    if (shareBtn && shareModal) {
+      shareBtn.addEventListener('click', () => {
+        const layoutObj = getCurrentLayoutObject();
+        const jsonStr = JSON.stringify(layoutObj);
+        let encoded = '';
+        try {
+          encoded = btoa(jsonStr);
+        } catch (e) {
+          encoded = jsonStr;
+        }
+        if (shareOutput) {
+          shareOutput.value = encoded;
+          shareOutput.focus();
+          shareOutput.select();
+        }
+        if (importStatus) importStatus.textContent = '';
+        if (importInput) importInput.value = '';
+
+        this.copyTextToClipboard(encoded).then((success) => {
+          this.showToast(success ? '📋 Layout code copied to clipboard!' : '📋 Layout code generated!');
+        });
+        shareModal.classList.remove('hidden');
+      });
+    }
+
+    if (copyCodeBtn && shareOutput) {
+      copyCodeBtn.addEventListener('click', () => {
+        if (shareOutput.value) {
+          shareOutput.focus();
+          shareOutput.select();
+          this.copyTextToClipboard(shareOutput.value).then(() => {
+            copyCodeBtn.textContent = '✅ Copied!';
+            this.showToast('📋 Layout code copied to clipboard!');
+            setTimeout(() => { copyCodeBtn.textContent = '📋 Copy'; }, 2000);
+          });
+        }
+      });
+    }
+
+    if (applyImportBtn && importInput) {
+      applyImportBtn.addEventListener('click', () => {
+        const raw = importInput.value.trim();
+        if (!raw) {
+          if (importStatus) {
+            importStatus.style.color = '#ff8a80';
+            importStatus.textContent = 'Please paste a layout code first!';
+          }
+          return;
+        }
+        try {
+          let layoutObj = null;
+          try {
+            layoutObj = JSON.parse(atob(raw));
+          } catch (e) {
+            layoutObj = JSON.parse(raw);
+          }
+          if (typeof layoutObj !== 'object' || layoutObj === null) {
+            throw new Error('Invalid layout format');
+          }
+          customizableWidgets.forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (layoutObj[id]) {
+              const item = layoutObj[id];
+              applyWidgetTransform(el, item.tx || 0, item.ty || 0, item.scale || 1.0);
+              const lbl = el.querySelector('.scale-label');
+              if (lbl) lbl.textContent = `${Math.round((parseFloat(el.dataset.hudScale) || 1.0) * 100)}%`;
+            }
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(layoutObj));
+          if (importStatus) {
+            importStatus.style.color = '#81c784';
+            importStatus.textContent = '✅ Layout applied & saved successfully!';
+          }
+          this.showToast('✅ Layout applied & saved!');
+          setTimeout(() => {
+            if (shareModal) shareModal.classList.add('hidden');
+          }, 1200);
+        } catch (err) {
+          if (importStatus) {
+            importStatus.style.color = '#ff8a80';
+            importStatus.textContent = '❌ Invalid layout code. Please check and try again.';
+          }
+        }
+      });
+    }
+
+    if (closeShareBtn && shareModal) {
+      closeShareBtn.addEventListener('click', () => {
+        shareModal.classList.add('hidden');
       });
     }
   }
@@ -1463,10 +2012,11 @@ class Game {
 
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
-        const code = hostCodeVal ? hostCodeVal.textContent : '';
-        if (code && navigator.clipboard) {
-          navigator.clipboard.writeText(code).then(() => {
+        const code = hostCodeVal ? hostCodeVal.textContent.trim() : '';
+        if (code) {
+          this.copyTextToClipboard(code).then(() => {
             copyBtn.textContent = '✅ Copied!';
+            this.showToast(`📋 Room code ${code} copied to clipboard!`);
             setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
           });
         }
@@ -1521,6 +2071,17 @@ class Game {
       });
     }
 
+    // Duel difficulty selector buttons in multiplayer modal
+    document.querySelectorAll('.mp-diff-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const diff = btn.getAttribute('data-diff');
+        if (diff) {
+          this.setDifficulty(diff, true);
+        }
+      });
+    });
+
     // PvP victory/defeat modal action buttons
     const btnPvPRematch = document.getElementById('btn-pvp-rematch');
     const btnPvPMenu = document.getElementById('btn-pvp-menu');
@@ -1529,6 +2090,51 @@ class Game {
     }
     if (btnPvPMenu) {
       btnPvPMenu.addEventListener('click', () => this.returnToMainMenu());
+    }
+  }
+
+  copyTextToClipboard(text) {
+    if (!text) return Promise.resolve(false);
+
+    // 1. Try modern asynchronous Clipboard API if in secure context
+    if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      return navigator.clipboard.writeText(text)
+        .then(() => true)
+        .catch(() => this.fallbackCopyToClipboard(text));
+    }
+
+    // 2. Fallback using off-screen textarea + execCommand('copy') for HTTP / LAN
+    return Promise.resolve(this.fallbackCopyToClipboard(text));
+  }
+
+  fallbackCopyToClipboard(text) {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.top = '0';
+      textArea.style.left = '0';
+      textArea.style.width = '2em';
+      textArea.style.height = '2em';
+      textArea.style.padding = '0';
+      textArea.style.border = 'none';
+      textArea.style.outline = 'none';
+      textArea.style.boxShadow = 'none';
+      textArea.style.background = 'transparent';
+      textArea.style.opacity = '0.01';
+      textArea.setAttribute('readonly', '');
+      document.body.appendChild(textArea);
+
+      textArea.focus();
+      textArea.select();
+      textArea.setSelectionRange(0, text.length);
+
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (err) {
+      console.warn('Fallback copy error:', err);
+      return false;
     }
   }
 
@@ -1876,7 +2482,7 @@ class Game {
     this.triggerCameraShake(0.65, 0.3);
 
     // Synchronize burst in P2P multiplayer if active
-    if (this.isMultiplayerGame && this.multiplayer) {
+    if (this.isMultiplayerGame && this.multiplayer && typeof this.multiplayer.sendShipState === 'function') {
       this.multiplayer.sendShipState();
     }
   }
@@ -2309,14 +2915,13 @@ class Game {
     const enemyDistEl = document.getElementById('enemy-dist-val');
     const enemyHpValEl = document.getElementById('enemy-hp-val');
     const enemyHpFillEl = document.getElementById('enemy-hp-fill');
-    const enemyBadgeEl = document.getElementById('enemy-badge-val');
     const enemyDiamondEl = document.getElementById('enemy-diamond-icon');
 
     if (enemyCard) {
       const btnLockToggle = document.getElementById('btn-enemy-lock-toggle');
       if (btnLockToggle) {
         const isLocked = this.isMultiplayerGame ? this.multiplayerEnemyLock : (this.lockedEnemy !== null);
-        btnLockToggle.textContent = isLocked ? '🎯 LOCKED' : '🔓 FREE CAM';
+        btnLockToggle.textContent = isLocked ? 'LOCKED' : 'FREE CAM';
         if (isLocked) {
           btnLockToggle.classList.remove('unlocked');
           btnLockToggle.classList.add('locked');
@@ -2342,18 +2947,6 @@ class Game {
           enemyHpFillEl.style.width = `${hpPct * 100}%`;
           enemyHpValEl.textContent = `${curHp}/${maxHp} (${Math.round(hpPct * 100)}%)`;
         }
-        if (enemyBadgeEl) {
-          if (remote.isSinking) {
-            enemyBadgeEl.textContent = 'SUNK ☠️';
-            enemyBadgeEl.classList.add('sinking');
-          } else if (this.multiplayerEnemyLock) {
-            enemyBadgeEl.textContent = 'LOCKED';
-            enemyBadgeEl.classList.remove('sinking');
-          } else {
-            enemyBadgeEl.textContent = 'FREE CAM';
-            enemyBadgeEl.classList.remove('sinking');
-          }
-        }
         if (enemyDiamondEl) {
           enemyDiamondEl.style.color = '#ff1744';
         }
@@ -2371,10 +2964,6 @@ class Game {
           enemyHpFillEl.style.width = `${hpPct * 100}%`;
           enemyHpValEl.textContent = `${curHp}/${maxHp} (${Math.round(hpPct * 100)}%)`;
         }
-        if (enemyBadgeEl) {
-          enemyBadgeEl.textContent = 'ALERTED';
-          enemyBadgeEl.classList.remove('sinking');
-        }
         if (enemyDiamondEl) {
           enemyDiamondEl.style.color = '#ff1744';
         }
@@ -2382,18 +2971,18 @@ class Game {
         enemyCard.classList.add('visible');
         if (enemyHpFillEl) enemyHpFillEl.style.width = '0%';
         if (enemyHpValEl) enemyHpValEl.textContent = '0';
-        if (enemyBadgeEl) {
-          enemyBadgeEl.textContent = 'SINKING';
-          enemyBadgeEl.classList.add('sinking');
-        }
       } else {
         enemyCard.classList.remove('visible');
       }
     }
 
-    // Mini-map
+    // Mini-map (throttled according to graphics quality setting for max frame stability)
     if (this.minimapCtx) {
-      this.renderMiniMap();
+      this._minimapFrame = (this._minimapFrame || 0) + 1;
+      const interval = this.minimapThrottleInterval || (this.isMobile ? 2 : 1);
+      if (interval <= 1 || (this._minimapFrame % interval === 0)) {
+        this.renderMiniMap();
+      }
     }
   }
 
@@ -2794,7 +3383,10 @@ class Game {
           (remote.heave || 0) + 16.5,
           remote.position.z
         );
-        this.renderDiamondOnCanvas(this.multiplayerThreatSprite._diamondCtx, this.multiplayerThreatSprite._diamondTexture, this.multiplayerEnemyLock);
+        if (this._lastThreatAlerted !== this.multiplayerEnemyLock) {
+          this._lastThreatAlerted = this.multiplayerEnemyLock;
+          this.renderDiamondOnCanvas(this.multiplayerThreatSprite._diamondCtx, this.multiplayerThreatSprite._diamondTexture, this.multiplayerEnemyLock);
+        }
         if (this.multiplayerEnemyLock) {
           const pulse = 6.8 * (1.0 + Math.sin(performance.now() * 0.008) * 0.16);
           this.multiplayerThreatSprite.scale.set(pulse, pulse, 1);

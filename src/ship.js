@@ -203,11 +203,13 @@ export class Ship {
   }
 
   initWakeParticles() {
-    this.wakeMax = 100;
+    this.wakeCapacity = 120;
+    const isMobile = typeof window !== 'undefined' && (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth <= 768);
+    this.wakeMax = isMobile ? 36 : 75;
     const geo = new THREE.BufferGeometry();
-    const positions = new Float32Array(this.wakeMax * 3);
+    const positions = new Float32Array(this.wakeCapacity * 3);
 
-    for (let i = 0; i < this.wakeMax; i++) {
+    for (let i = 0; i < this.wakeCapacity; i++) {
       positions[i * 3] = 0;
       positions[i * 3 + 1] = -100;
       positions[i * 3 + 2] = 0;
@@ -228,6 +230,12 @@ export class Ship {
     this.wakeParticles.renderOrder = 2;
     this.scene.add(this.wakeParticles);
     this.wakeHistory = [];
+  }
+
+  setWakeMax(max) {
+    if (typeof max === 'number' && max > 0) {
+      this.wakeMax = Math.min(this.wakeCapacity || 120, Math.max(10, Math.round(max)));
+    }
   }
 
   setSailState(state) {
@@ -445,6 +453,7 @@ export class Ship {
 
   updateWake(delta, forward, right) {
     if (!this.wakeParticles) return;
+    if (this.speed < 0.4 && this.wakeHistory.length === 0) return;
 
     if (this.speed > 1.0) {
       // Stern is behind the ship (in opposite direction of forward)
@@ -468,7 +477,8 @@ export class Ship {
     }
 
     const posAttr = this.wakeParticles.geometry.attributes.position;
-    for (let i = 0; i < this.wakeMax; i++) {
+    const capacity = this.wakeCapacity || 120;
+    for (let i = 0; i < capacity; i++) {
       if (i < this.wakeHistory.length) {
         const item = this.wakeHistory[i];
         const h = this.ocean.getWaveHeight(item.pos.x, item.pos.z);

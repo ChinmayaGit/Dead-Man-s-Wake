@@ -12,6 +12,7 @@ export class Ocean {
   constructor(scene, size = 1500, segments = 100) {
     this.scene = scene;
     this.size = size;
+    this.segments = segments;
     this.time = 0;
 
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
@@ -167,5 +168,19 @@ export class Ocean {
       y += a * Math.sin(f);
     }
     return isNaN(y) ? 0 : y;
+  }
+
+  setSegments(segments) {
+    if (!segments || this.segments === segments) return;
+    this.segments = segments;
+    if (!this.mesh) return;
+
+    const oldGeo = this.mesh.geometry;
+    const newGeo = new THREE.PlaneGeometry(this.size, this.size, segments, segments);
+    newGeo.rotateX(-Math.PI / 2);
+    this.mesh.geometry = newGeo;
+    if (oldGeo && typeof oldGeo.dispose === 'function') {
+      oldGeo.dispose();
+    }
   }
 }
