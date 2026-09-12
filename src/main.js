@@ -7,6 +7,7 @@ import { Archipelago } from './islands.js';
 import { SoundController } from './audio.js';
 import { CollisionSystem } from './collision.js';
 import { MultiplayerManager } from './multiplayer.js';
+import { GamepadController } from './gamepad.js';
 
 // Camera Chase and Zoom Presets based on Sail State (Dead-Man-s-Wake)
 export const SAIL_CAMERA_PRESETS = {
@@ -111,7 +112,9 @@ class Game {
     this.lastTime = performance.now();
 
     // Device Detection (Mobile Phone/Tablet vs Desktop)
-    this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth <= 768);
+    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    this.isMobile = isMobileUA || (hasTouch && window.innerWidth <= 840);
 
     // Graphics & Performance Preset System
     let savedQuality = null;
@@ -153,17 +156,34 @@ class Game {
     this.dodgeCooldown = 0;
     this.dodgeMaxCooldown = 5.0;
 
-    // Steering Control Mode ('wheel' or 'buttons') - strictly defaults to 'wheel'
-    this.steeringMode = 'wheel';
-    try {
-      const savedMode = localStorage.getItem('deadmanswake_steer_mode');
-      this.steeringMode = savedMode === 'buttons' ? 'buttons' : 'wheel';
-    } catch (e) {
-      this.steeringMode = 'wheel';
+    // Steering Control Mode ('wheel' or 'buttons')
+    // Desktop strictly defaults to 'wheel' (Iconic ship helm)
+    // Mobile strictly defaults to 'buttons' (Discrete responsive touch controls)
+    if (this.isMobile) {
+      let mobileMode = 'buttons';
+      try {
+        const savedMobile = localStorage.getItem('deadmanswake_steer_mode_mobile');
+        if (savedMobile === 'buttons' || savedMobile === 'wheel') {
+          mobileMode = savedMobile;
+        }
+      } catch (e) {}
+      this.steeringMode = mobileMode;
+    } else {
+      let desktopMode = 'wheel';
+      try {
+        const savedDesktop = localStorage.getItem('deadmanswake_steer_mode_desktop');
+        if (savedDesktop === 'buttons' || savedDesktop === 'wheel') {
+          desktopMode = savedDesktop;
+        }
+      } catch (e) {}
+      this.steeringMode = desktopMode;
     }
 
-    // Single-player defeat tracking
+    // Defeat & Win/Loss match timers
     this.isSinglePlayerDefeatPrompted = false;
+    this.pvpEndTimeout = null;
+    this.singlePlayerDefeatTimeout = null;
+    this.matchStartTime = performance.now();
 
     // Sunk Enemy Salvage & Loot System
     this.playerGold = 0;
@@ -177,6 +197,9 @@ class Game {
     this.initScene();
     this.initLights();
     this.initGameObjects();
+
+    // Gamepad & Controller Support (Xbox, PlayStation, Switch)
+    this.gamepad = new GamepadController(this);
 
     // P2P Multiplayer (WebRTC)
     this.multiplayer = new MultiplayerManager(this);
@@ -207,15 +230,15 @@ class Game {
     this.scene.fog = new THREE.Fog(0x9bd7f5, 120, preset.fogFar);
 
     this.camera = new THREE.PerspectiveCamera(
-      54,
+      SAIL_CAMERA_PRESETS[1].fov,
       window.innerWidth / window.innerHeight,
       0.5,
       2000
     );
 
     // Initial camera position (3rd person behind stern)
-    this.camera.position.set(0, 11, 26);
-    this.camera.lookAt(0, 3.5, -6);
+    this.camera.position.set(0, 14, 38);
+    this.camera.lookAt(0, 3.8, -6);
 
     const targetDpr = this.isMobile ? preset.dprMobile : preset.dprDesktop;
     this.renderer = new THREE.WebGLRenderer({ antialias: !this.isMobile && this.graphicsQuality !== 'low', powerPreference: 'high-performance' });
@@ -225,12 +248,12 @@ class Game {
     this.renderer.toneMappingExposure = 1.2;
     this.container.appendChild(this.renderer.domElement);
 
-    // 3rd Person Camera Chase Config with Sail Zoom Support
+    // 3rd Person Camera Chase Config with Sail Zoom Support (Initialized to Half Sail Preset)
     this.camOrbit = {
-      distance: 28.0,
-      height: 6.5,
-      fov: 54,
-      lookHeight: 3.2,
+      distance: SAIL_CAMERA_PRESETS[1].distance,
+      height: SAIL_CAMERA_PRESETS[1].height,
+      fov: SAIL_CAMERA_PRESETS[1].fov,
+      lookHeight: SAIL_CAMERA_PRESETS[1].lookHeight,
       userZoom: 0,
       angleH: 0,
       angleV: 0.18,
@@ -269,9 +292,14 @@ class Game {
     this.archipelago = new Archipelago(this.scene);
 
     // Player Flagship (Dead-Man-s-Wake - 3D Pirate Galleon Asset)
+    // Starts at open sea approach (0, 0, 260) facing North towards archipelago
     this.playerShip = new Ship(this.scene, this.ocean, true, 'ship-pirate-large.glb');
     this.playerShip.setWakeMax(preset.wakeMax);
-    this.playerShip.position.set(0, 0, 0);
+    this.playerShip.position.set(0, 0, 260);
+    this.playerShip.heading = 0;
+    this.playerShip.speed = 0;
+    this.playerShip.targetSpeed = 0;
+    this.playerShip.setSailState(1);
 
     // Combat System
     this.combat = new CombatSystem(this.scene, this.ocean, this.sound);
@@ -302,9 +330,9 @@ class Game {
 
     // Royal Navy Enemies stationed across the archipelago (Tiered Toughness & Authentic Warship Health)
     this.enemies = [
-      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(45, 0, -55), 'HMS Defiance', 280, 'Frigate'),
-      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(-120, 0, -20), 'HMS Vanguard', 380, 'Heavy Frigate'),
-      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(80, 0, 95), 'HMS Intrepid', 500, 'Flagship')
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(50, 0, -50), 'HMS Defiance', 200, 'Frigate', 'ship-medium.glb'),
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(-80, 0, 20), 'HMS Vanguard', 350, 'Heavy Frigate', 'ship-large.glb'),
+      new EnemyShip(this.scene, this.ocean, this.combat, new THREE.Vector3(60, 0, 110), 'HMS Intrepid', 500, 'Flagship', 'ship-large.glb')
     ];
     this.botEnemies = this.enemies; // Preserve bot enemies reference for singleplayer
     this.isMultiplayerGame = false;
@@ -325,7 +353,8 @@ class Game {
         if (this.isMultiplayerGame && this.multiplayer && hitShip === this.multiplayer.remoteShip) {
           this.multiplayer.notifyCannonHit(dmg, isRam);
         }
-      }
+      },
+      onIslandWarning: (name, index, isScrape = false) => this.handleIslandCollision(name, index, isScrape)
     });
   }
 
@@ -391,7 +420,11 @@ class Game {
             e.ship.sinkProgress = 0;
             e.ship.health = e.ship.maxHealth;
             if (e.ship.group) e.ship.group.position.y = 0;
+            if (typeof e.renderOverheadCanvas === 'function') {
+              e.renderOverheadCanvas(false, false);
+            }
           }
+          e.hasPromptedSalvage = false;
         }
         if (e.threatSprite) {
           e.threatSprite.visible = true;
@@ -606,6 +639,43 @@ class Game {
 
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
+
+      // Pause / Settings toggle with Escape or P key
+      if (key === 'escape' || key === 'p') {
+        const splashModal = document.getElementById('splash-modal');
+        if (splashModal && !splashModal.classList.contains('hidden')) {
+          return;
+        }
+        const infoGuideModal = document.getElementById('info-guide-modal');
+        if (infoGuideModal && !infoGuideModal.classList.contains('hidden')) {
+          infoGuideModal.classList.add('hidden');
+          this.lastTime = performance.now();
+          return;
+        }
+        const settingsModal = document.getElementById('settings-modal');
+        if (settingsModal) {
+          if (settingsModal.classList.contains('hidden')) {
+            this.openSettings();
+          } else {
+            this.closeSettings();
+          }
+        }
+        return;
+      }
+
+      // If game is currently paused (settings or splash screen open), don't process gameplay controls
+      if (this.isGamePaused()) {
+        if (key === ' ' || key === 'enter') {
+          const splashModal = document.getElementById('splash-modal');
+          if (splashModal && !splashModal.classList.contains('hidden')) {
+            splashModal.classList.add('hidden');
+            this.sound.init();
+            this.startSinglePlayerBattle();
+          }
+        }
+        return;
+      }
+
       if (this.keys.hasOwnProperty(key)) this.keys[key] = true;
 
       if (key === 'arrowleft') this.keys.a = true;
@@ -630,6 +700,7 @@ class Game {
         if (splashModal && !splashModal.classList.contains('hidden')) {
           splashModal.classList.add('hidden');
           this.sound.init();
+          this.startSinglePlayerBattle();
         } else if (key === ' ' || key === 'f') {
           this.triggerDodge(1);
         }
@@ -641,6 +712,7 @@ class Game {
         if (splashModal && !splashModal.classList.contains('hidden')) {
           splashModal.classList.add('hidden');
           this.sound.init();
+          this.startSinglePlayerBattle();
         }
         this.changeSail(Math.min(2, this.playerShip.sailState + 1));
       } else if (key === 's' || key === 'arrowdown') {
@@ -864,6 +936,7 @@ class Game {
           this.restoreAllBotEnemies();
           if (splashModal) splashModal.classList.add('hidden');
           this.sound.init();
+          this.startSinglePlayerBattle();
           this.requestLandscapeLock();
         }
       });
@@ -872,19 +945,17 @@ class Game {
     // Settings Modal
     const btnSettingsHud = document.getElementById('btn-settings-hud');
     const btnCloseSettings = document.getElementById('btn-close-settings');
-    const openSettings = () => {
-      if (settingsModal) settingsModal.classList.remove('hidden');
-    };
-    if (btnMenuSettings) btnMenuSettings.addEventListener('click', openSettings);
-    if (btnSettingsHud) btnSettingsHud.addEventListener('click', openSettings);
-    if (btnCloseSettings) btnCloseSettings.addEventListener('click', () => {
-      if (settingsModal) settingsModal.classList.add('hidden');
-    });
+    const btnCloseSettingsBottom = document.getElementById('btn-close-settings-bottom');
+
+    if (btnMenuSettings) btnMenuSettings.addEventListener('click', () => this.openSettings());
+    if (btnSettingsHud) btnSettingsHud.addEventListener('click', () => this.openSettings());
+    if (btnCloseSettings) btnCloseSettings.addEventListener('click', () => this.closeSettings());
+    if (btnCloseSettingsBottom) btnCloseSettingsBottom.addEventListener('click', () => this.closeSettings());
 
     const btnSettingsQuit = document.getElementById('btn-settings-quit');
     if (btnSettingsQuit) {
       btnSettingsQuit.addEventListener('click', () => {
-        if (settingsModal) settingsModal.classList.add('hidden');
+        this.closeSettings();
         if (this.isMultiplayerGame) {
           this.returnToMainMenu();
         } else {
@@ -906,6 +977,101 @@ class Game {
       if (multiplayerModal) multiplayerModal.classList.add('hidden');
     });
 
+    // Close modals on clicking anywhere outside the menu card (overlay backdrop click)
+    const infoGuideModal = document.getElementById('info-guide-modal');
+    const backdropClosableModals = [
+      settingsModal,
+      multiplayerModal,
+      document.getElementById('hud-share-modal'),
+      document.getElementById('mobile-customizer-modal'),
+      infoGuideModal
+    ];
+    backdropClosableModals.forEach((modal) => {
+      if (!modal) return;
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.add('hidden');
+        }
+      });
+    });
+
+    // Info Guide & Controller Layout Modal & Buttons
+    const tabBtnHowToPlay = document.getElementById('tab-btn-how-to-play');
+    const tabBtnController = document.getElementById('tab-btn-controller');
+    const panelHowToPlay = document.getElementById('guide-panel-how-to-play');
+    const panelController = document.getElementById('guide-panel-controller');
+    const infoModalIcon = document.getElementById('info-modal-icon');
+    const infoModalTitle = document.getElementById('info-modal-title');
+    const btnCloseInfoModal = document.getElementById('btn-close-info-modal');
+    const btnCloseInfoModalBottom = document.getElementById('btn-close-info-modal-bottom');
+
+    const switchGuideTab = (tab) => {
+      if (tab === 'controller') {
+        if (tabBtnController) tabBtnController.classList.add('active');
+        if (tabBtnHowToPlay) tabBtnHowToPlay.classList.remove('active');
+        if (panelController) panelController.classList.remove('hidden');
+        if (panelHowToPlay) panelHowToPlay.classList.add('hidden');
+        if (infoModalIcon) infoModalIcon.textContent = '🎮';
+        if (infoModalTitle) infoModalTitle.textContent = 'CONTROLLER BUTTON LAYOUT';
+      } else {
+        if (tabBtnHowToPlay) tabBtnHowToPlay.classList.add('active');
+        if (tabBtnController) tabBtnController.classList.remove('active');
+        if (panelHowToPlay) panelHowToPlay.classList.remove('hidden');
+        if (panelController) panelController.classList.add('hidden');
+        if (infoModalIcon) infoModalIcon.textContent = '📜';
+        if (infoModalTitle) infoModalTitle.textContent = "HOW TO PLAY - CAPTAIN'S MANUAL";
+      }
+    };
+
+    const openGuideModal = (tab = 'how-to-play') => {
+      switchGuideTab(tab);
+      if (infoGuideModal) infoGuideModal.classList.remove('hidden');
+    };
+
+    const closeGuideModal = () => {
+      if (infoGuideModal) infoGuideModal.classList.add('hidden');
+    };
+
+    if (tabBtnHowToPlay) tabBtnHowToPlay.addEventListener('click', () => switchGuideTab('how-to-play'));
+    if (tabBtnController) tabBtnController.addEventListener('click', () => switchGuideTab('controller'));
+
+    const btnOpenHowToPlay = document.getElementById('btn-open-how-to-play');
+    const btnOpenControllerLayout = document.getElementById('btn-open-controller-layout');
+    const btnMenuGuide = document.getElementById('btn-menu-guide');
+
+    if (btnOpenHowToPlay) btnOpenHowToPlay.addEventListener('click', () => openGuideModal('how-to-play'));
+    if (btnOpenControllerLayout) btnOpenControllerLayout.addEventListener('click', () => openGuideModal('controller'));
+    if (btnMenuGuide) btnMenuGuide.addEventListener('click', () => openGuideModal('how-to-play'));
+
+    if (btnCloseInfoModal) btnCloseInfoModal.addEventListener('click', closeGuideModal);
+    if (btnCloseInfoModalBottom) btnCloseInfoModalBottom.addEventListener('click', closeGuideModal);
+
+    // Mobile Customizer Tip Dialog
+    const mobileCustomizerModal = document.getElementById('mobile-customizer-modal');
+    const btnMobileTipCustomize = document.getElementById('btn-mobile-tip-customize');
+    const btnMobileTipDismiss = document.getElementById('btn-mobile-tip-dismiss');
+
+    const dismissMobileTip = () => {
+      try {
+        localStorage.setItem('deadmanswake_mobile_customizer_tip_dismissed', 'true');
+      } catch (e) {}
+      if (mobileCustomizerModal) mobileCustomizerModal.classList.add('hidden');
+    };
+
+    if (btnMobileTipCustomize) {
+      btnMobileTipCustomize.addEventListener('click', () => {
+        dismissMobileTip();
+        if (this.openHUDCustomizer) {
+          this.openHUDCustomizer();
+        }
+      });
+    }
+    if (btnMobileTipDismiss) {
+      btnMobileTipDismiss.addEventListener('click', () => {
+        dismissMobileTip();
+      });
+    }
+
     // Audio button in top tools
     const muteBtn = document.getElementById('mute-btn');
     const settingsAudioBtn = document.getElementById('btn-settings-audio');
@@ -920,6 +1086,28 @@ class Game {
     };
     if (muteBtn) muteBtn.addEventListener('click', toggleSound);
     if (settingsAudioBtn) settingsAudioBtn.addEventListener('click', toggleSound);
+
+    // Setting: Always Play Fight Music
+    const btnFightMusic = document.getElementById('btn-settings-fight-music');
+    if (btnFightMusic) {
+      const updateFightMusicBtn = () => {
+        if (this.sound && this.sound.alwaysCombatMusic) {
+          btnFightMusic.classList.add('active');
+          btnFightMusic.textContent = '⚔️ Fight Music: ON';
+        } else {
+          btnFightMusic.classList.remove('active');
+          btnFightMusic.textContent = '⚔️ Fight Music: OFF';
+        }
+      };
+      updateFightMusicBtn();
+
+      btnFightMusic.addEventListener('click', () => {
+        if (this.sound) {
+          this.sound.setAlwaysCombatMusic(!this.sound.alwaysCombatMusic);
+          updateFightMusicBtn();
+        }
+      });
+    }
 
     // Graphics Quality & Performance Settings Selector
     this.initGraphicsSettings();
@@ -954,6 +1142,9 @@ class Game {
       const btn = document.getElementById(`btn-sail-${state}`);
       if (btn) btn.addEventListener('click', () => this.changeSail(state));
     });
+
+    // Synchronize UI sail lever to initial Half Sail state
+    this.changeSail(1);
 
     const btnPort = document.getElementById('btn-fire-port');
     const btnStbd = document.getElementById('btn-fire-starboard');
@@ -1803,14 +1994,20 @@ class Game {
       });
     };
 
+    const openCustomizer = () => {
+      const settingsModal = document.getElementById('settings-modal');
+      if (settingsModal) settingsModal.classList.add('hidden');
+      try {
+        localStorage.setItem('deadmanswake_mobile_customizer_tip_dismissed', 'true');
+      } catch (e) {}
+      this.isCustomizingHUD = true;
+      document.body.classList.add('hud-editing');
+      if (bar) bar.classList.remove('hidden');
+    };
+    this.openHUDCustomizer = openCustomizer;
+
     if (openBtn) {
-      openBtn.addEventListener('click', () => {
-        const settingsModal = document.getElementById('settings-modal');
-        if (settingsModal) settingsModal.classList.add('hidden');
-        this.isCustomizingHUD = true;
-        document.body.classList.add('hud-editing');
-        if (bar) bar.classList.remove('hidden');
-      });
+      openBtn.addEventListener('click', openCustomizer);
     }
 
     if (saveBtn) {
@@ -1844,6 +2041,8 @@ class Game {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_MOBILE_LAYOUT));
           } catch (e) {}
         }
+        const defSteer = this.isMobile ? 'buttons' : 'wheel';
+        this.setSteeringMode(defSteer);
         this.isCustomizingHUD = false;
         document.body.classList.remove('hud-editing');
         if (bar) bar.classList.add('hidden');
@@ -2140,9 +2339,17 @@ class Game {
 
   startMultiplayerBattle(broadcast = true) {
     console.log('⚔️ [P2P Battle] Starting 1v1 High-Seas Naval Duel...');
+    if (this.pvpEndTimeout) {
+      clearTimeout(this.pvpEndTimeout);
+      this.pvpEndTimeout = null;
+    }
     this.isMultiplayerGame = true;
     this.pvpGameOver = false;
     this.rematchRequestedByPeer = false;
+    this.matchStartTime = performance.now();
+    if (this.multiplayer) {
+      this.multiplayer.matchRound = (this.multiplayer.matchRound || 1) + 1;
+    }
 
     // 1. Completely hide and remove AI bot enemy ships, diamonds, and wake particles from the scene
     this.hideAllBotEnemies();
@@ -2159,40 +2366,49 @@ class Game {
     const isHost = this.multiplayer && this.multiplayer.role === 'host';
 
     // 3. Position and restore Player Ship
-    // Host starts at (0, 0, -45) facing South (+Z); Client starts at (0, 0, 45) facing North (-Z)
-    const playerZ = isHost ? -45 : 45;
+    // Host starts at open southern channel (0, 0, 260) facing North (0)
+    // Client starts at open northern channel (0, 0, -260) facing South (Math.PI)
+    // Both spawn safely far away from all islands and move towards the archipelago!
+    const playerZ = isHost ? 260 : -260;
     const playerHeading = isHost ? 0 : Math.PI;
 
     this.playerShip.position.set(0, 0, playerZ);
     this.playerShip.heading = playerHeading;
     this.playerShip.rudder = 0;
-    this.playerShip.speed = 0;
+    this.playerShip.speed = 8.5;
+    this.playerShip.targetSpeed = 8.5;
     this.playerShip.health = 100;
     this.playerShip.maxHealth = 100;
     this.playerShip.isSinking = false;
     this.playerShip.sinkProgress = 0;
-    this.playerShip.group.visible = true;
-    this.playerShip.group.position.y = 0;
-    this.playerShip.group.rotation.set(0, playerHeading, 0);
+    if (this.playerShip.group) {
+      this.playerShip.group.visible = true;
+      this.playerShip.group.position.set(0, 0, playerZ);
+      this.playerShip.group.rotation.set(0, playerHeading, 0);
+    }
     this.playerShip.setSailState(1);
+    this.changeSail(1);
 
     // 4. Position and restore Remote Rival Ship
     if (this.multiplayer && this.multiplayer.remoteShip) {
-      const remoteZ = isHost ? 45 : -45;
+      const remoteZ = isHost ? -260 : 260;
       const remoteHeading = isHost ? Math.PI : 0;
       const remote = this.multiplayer.remoteShip;
 
       remote.position.set(0, 0, remoteZ);
       remote.heading = remoteHeading;
-      remote.speed = 0;
+      remote.speed = 8.5;
+      remote.targetSpeed = 8.5;
       remote.rudder = 0;
       remote.health = 100;
       remote.maxHealth = 100;
       remote.isSinking = false;
       remote.sinkProgress = 0;
-      remote.group.visible = true;
-      remote.group.position.y = 0;
-      remote.group.rotation.set(0, remoteHeading, 0);
+      if (remote.group) {
+        remote.group.visible = true;
+        remote.group.position.set(0, 0, remoteZ);
+        remote.group.rotation.set(0, remoteHeading, 0);
+      }
       remote.setSailState(1);
       this.multiplayer.remoteTargetPos.set(0, 0, remoteZ);
 
@@ -2200,6 +2416,9 @@ class Game {
         this.multiplayer.updateNameTag(100, 100);
       }
     }
+
+    this.camHeading = playerHeading;
+    this.updateCamera(0.016, true);
 
     // 5. Clear airborne projectiles & reset cooldowns
     this.combat.cannonballs.forEach((b) => {
@@ -2230,19 +2449,25 @@ class Game {
 
     // 7. Synchronize match start across WebRTC DataChannel
     if (broadcast && this.multiplayer) {
-      this.multiplayer.send({ type: 'start_pvp_battle' });
+      this.multiplayer.send({ type: 'start_pvp_battle', round: this.multiplayer.matchRound });
     }
+
+    // 8. Mobile Customizer tip prompt
+    this.checkShowMobileCustomizerTip();
   }
 
   checkPvPWinLoss() {
     if (!this.isMultiplayerGame || this.pvpGameOver) return;
     if (!this.multiplayer || !this.multiplayer.remoteShip) return;
 
+    // Grace period at start of match to prevent instant defeat from in-flight packets
+    if (performance.now() - this.matchStartTime < 2500) return;
+
     // Condition 1: Player Ship Sunk -> Defeat
     if (this.playerShip.health <= 0 || this.playerShip.isSinking) {
       this.pvpGameOver = true;
       this.handlePvPBattleEnd('defeat');
-      this.multiplayer.send({ type: 'pvp_defeat_notify' });
+      this.multiplayer.send({ type: 'pvp_defeat_notify', round: this.multiplayer.matchRound });
       return;
     }
 
@@ -2250,14 +2475,18 @@ class Game {
     if (this.multiplayer.remoteShip.health <= 0 || this.multiplayer.remoteShip.isSinking) {
       this.pvpGameOver = true;
       this.handlePvPBattleEnd('victory');
-      this.multiplayer.send({ type: 'pvp_victory_notify' });
+      this.multiplayer.send({ type: 'pvp_victory_notify', round: this.multiplayer.matchRound });
       return;
     }
   }
 
   handlePvPBattleEnd(result) {
     this.pvpGameOver = true;
-    setTimeout(() => {
+    if (this.pvpEndTimeout) {
+      clearTimeout(this.pvpEndTimeout);
+      this.pvpEndTimeout = null;
+    }
+    this.pvpEndTimeout = setTimeout(() => {
       const modal = document.getElementById('pvp-end-modal');
       if (!modal) return;
 
@@ -2350,7 +2579,7 @@ class Game {
     if (this.rematchRequestedByPeer) {
       // Both captains agree! Start match immediately
       if (this.multiplayer) {
-        this.multiplayer.send({ type: 'pvp_rematch_start' });
+        this.multiplayer.send({ type: 'pvp_rematch_start', round: (this.multiplayer.matchRound || 1) + 1 });
       }
       this.restartPvPBattle(false);
     } else {
@@ -2371,6 +2600,10 @@ class Game {
   }
 
   restartPvPBattle(broadcast = true) {
+    if (this.pvpEndTimeout) {
+      clearTimeout(this.pvpEndTimeout);
+      this.pvpEndTimeout = null;
+    }
     const modal = document.getElementById('pvp-end-modal');
     if (modal) modal.classList.add('hidden');
     const rematchBtn = document.getElementById('btn-pvp-rematch');
@@ -2380,7 +2613,7 @@ class Game {
     this.rematchRequestedByPeer = false;
 
     if (broadcast && this.multiplayer) {
-      this.multiplayer.send({ type: 'pvp_rematch_start' });
+      this.multiplayer.send({ type: 'pvp_rematch_start', round: (this.multiplayer.matchRound || 1) + 1 });
     }
 
     this.startMultiplayerBattle(false);
@@ -2407,17 +2640,22 @@ class Game {
       this.multiplayerThreatSprite.visible = false;
     }
 
-    // Reset player ship to port center
-    this.playerShip.position.set(0, 0, 0);
+    // Reset player ship to open sea approach facing archipelago
+    this.playerShip.position.set(0, 0, 260);
     this.playerShip.heading = 0;
     this.playerShip.rudder = 0;
     this.playerShip.speed = 0;
     this.playerShip.health = 100;
     this.playerShip.isSinking = false;
     this.playerShip.sinkProgress = 0;
-    this.playerShip.group.position.y = 0;
-    this.playerShip.group.visible = true;
-    this.playerShip.setSailState(2);
+    if (this.playerShip.group) {
+      this.playerShip.group.position.set(0, 0, 260);
+      this.playerShip.group.rotation.set(0, 0, 0);
+      this.playerShip.group.visible = true;
+    }
+    this.playerShip.setSailState(1);
+    this.camHeading = 0;
+    this.updateCamera(0.016, true);
 
     // Show main splash menu with Dead-Man-s-Wake header
     const splash = document.getElementById('splash-modal');
@@ -2435,7 +2673,9 @@ class Game {
   setSteeringMode(mode) {
     this.steeringMode = mode === 'buttons' ? 'buttons' : 'wheel';
     try {
-      localStorage.setItem('deadmanswake_steer_mode', this.steeringMode);
+      const key = this.isMobile ? 'deadmanswake_steer_mode_mobile' : 'deadmanswake_steer_mode_desktop';
+      localStorage.setItem(key, this.steeringMode);
+      localStorage.removeItem('deadmanswake_steer_mode'); // Clear legacy shared key
     } catch (e) {}
 
     const helmWheel = document.getElementById('helm-wheel');
@@ -2489,11 +2729,15 @@ class Game {
 
   checkSinglePlayerDefeat() {
     if (this.isMultiplayerGame || this.isSinglePlayerDefeatPrompted) return;
+    if (performance.now() - this.matchStartTime < 2500) return;
     if (this.playerShip.health <= 0 || this.playerShip.isSinking) {
       this.isSinglePlayerDefeatPrompted = true;
       this.sound.setCombatMode(false);
 
-      setTimeout(() => {
+      if (this.singlePlayerDefeatTimeout) {
+        clearTimeout(this.singlePlayerDefeatTimeout);
+      }
+      this.singlePlayerDefeatTimeout = setTimeout(() => {
         const modal = document.getElementById('defeat-modal');
         if (modal && !this.isMultiplayerGame) {
           modal.classList.remove('hidden');
@@ -2502,28 +2746,110 @@ class Game {
     }
   }
 
-  restartSinglePlayerBattle() {
-    const defeatModal = document.getElementById('defeat-modal');
-    if (defeatModal) defeatModal.classList.add('hidden');
-
+  startSinglePlayerBattle() {
+    if (this.singlePlayerDefeatTimeout) {
+      clearTimeout(this.singlePlayerDefeatTimeout);
+      this.singlePlayerDefeatTimeout = null;
+    }
+    this.matchStartTime = performance.now();
     this.isSinglePlayerDefeatPrompted = false;
 
-    // Reset player ship
-    this.playerShip.position.set(0, 0, 0);
+    // Start safely far away from islands in open southern channel (0, 0, 260)
+    // Facing directly North (heading = 0) towards the archipelago with cruising speed
+    this.playerShip.position.set(0, 0, 260);
     this.playerShip.heading = 0;
     this.playerShip.rudder = 0;
-    this.playerShip.speed = 0;
+    this.playerShip.speed = 8.5;
+    this.playerShip.targetSpeed = 8.5;
     const initialHp = (this.difficultySettings && this.difficultySettings.playerMaxHp) ? this.difficultySettings.playerMaxHp : 100;
     this.playerShip.health = initialHp;
     this.playerShip.maxHealth = initialHp;
     this.playerShip.isSinking = false;
     this.playerShip.sinkProgress = 0;
     if (this.playerShip.group) {
-      this.playerShip.group.position.set(0, 0, 0);
+      this.playerShip.group.position.set(0, 0, 260);
       this.playerShip.group.rotation.set(0, 0, 0);
       this.playerShip.group.visible = true;
     }
-    this.playerShip.setSailState(2);
+    this.playerShip.setSailState(1);
+    this.changeSail(1);
+
+    // Orient camera directly behind stern looking forward into archipelago
+    this.camHeading = 0;
+    this.updateCamera(0.016, true);
+
+    // Mobile customizer tip prompt
+    this.checkShowMobileCustomizerTip();
+  }
+
+  checkShowMobileCustomizerTip() {
+    if (!this.isMobile) return;
+    try {
+      if (localStorage.getItem('deadmanswake_mobile_customizer_tip_dismissed')) return;
+    } catch (e) {
+      return;
+    }
+    const tipModal = document.getElementById('mobile-customizer-modal');
+    if (tipModal) {
+      setTimeout(() => {
+        if (!this.isCustomizingHUD) {
+          const splash = document.getElementById('splash-modal');
+          if (!splash || splash.classList.contains('hidden')) {
+            tipModal.classList.remove('hidden');
+          }
+        }
+      }, 1200);
+    }
+  }
+
+  handleIslandCollision(name, index, isScrape = false) {
+    this.lastIslandHitIndex = index;
+    this.lastIslandHitTime = performance.now();
+
+    let toast = document.getElementById('island-warning-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'island-warning-toast';
+      toast.style.position = 'fixed';
+      toast.style.top = '14%';
+      toast.style.left = '50%';
+      toast.style.transform = 'translateX(-50%)';
+      toast.style.padding = '8px 18px';
+      toast.style.background = 'rgba(183, 28, 28, 0.88)';
+      toast.style.color = '#fffde7';
+      toast.style.fontFamily = 'Cinzel, Georgia, serif';
+      toast.style.fontSize = '13px';
+      toast.style.fontWeight = 'bold';
+      toast.style.letterSpacing = '1.2px';
+      toast.style.border = '1px solid #ffd54f';
+      toast.style.borderRadius = '6px';
+      toast.style.boxShadow = '0 4px 18px rgba(0,0,0,0.6)';
+      toast.style.zIndex = '9999';
+      toast.style.pointerEvents = 'none';
+      toast.style.transition = 'opacity 0.35s ease';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = isScrape ? `⚠️ SHALLOWS SCRAPE: ${name.toUpperCase()} REEF` : `⚠️ RUN AGROUND: ${name.toUpperCase()} SHORELINE`;
+    toast.style.opacity = '1';
+    clearTimeout(this._islandToastTimer);
+    this._islandToastTimer = setTimeout(() => {
+      if (toast) toast.style.opacity = '0';
+    }, 2200);
+  }
+
+  restartSinglePlayerBattle() {
+    if (this.singlePlayerDefeatTimeout) {
+      clearTimeout(this.singlePlayerDefeatTimeout);
+      this.singlePlayerDefeatTimeout = null;
+    }
+    const defeatModal = document.getElementById('defeat-modal');
+    if (defeatModal) defeatModal.classList.add('hidden');
+
+    this.isSinglePlayerDefeatPrompted = false;
+    this.matchStartTime = performance.now();
+
+    // Reset player ship far away from islands, sailing towards the archipelago
+    this.startSinglePlayerBattle();
 
     // Reset cooldowns & dodge
     this.cooldowns.port = 0;
@@ -2559,8 +2885,8 @@ class Game {
     this.isSinglePlayerDefeatPrompted = false;
     this.restoreAllBotEnemies();
 
-    // Reset player ship to port center
-    this.playerShip.position.set(0, 0, 0);
+    // Position player ship safely in open sea approach facing archipelago
+    this.playerShip.position.set(0, 0, 260);
     this.playerShip.heading = 0;
     this.playerShip.rudder = 0;
     this.playerShip.speed = 0;
@@ -2568,10 +2894,13 @@ class Game {
     this.playerShip.isSinking = false;
     this.playerShip.sinkProgress = 0;
     if (this.playerShip.group) {
-      this.playerShip.group.position.y = 0;
+      this.playerShip.group.position.set(0, 0, 260);
+      this.playerShip.group.rotation.set(0, 0, 0);
       this.playerShip.group.visible = true;
     }
-    this.playerShip.setSailState(2);
+    this.playerShip.setSailState(1);
+    this.camHeading = 0;
+    this.updateCamera(0.016, true);
 
     // Show main splash menu
     const splash = document.getElementById('splash-modal');
@@ -2584,6 +2913,63 @@ class Game {
     if (menuDiff) menuDiff.classList.add('hidden');
 
     this.sound.setCombatMode(false);
+  }
+
+  openSettings() {
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal) {
+      settingsModal.classList.remove('hidden');
+      const badge = document.getElementById('settings-pause-indicator');
+      if (badge) {
+        if (this.isMultiplayerGame) {
+          badge.textContent = '⚔️ LIVE MATCH (NOT PAUSED)';
+          badge.style.color = '#ff9800';
+          badge.style.borderColor = '#ff9800';
+        } else {
+          badge.textContent = '⏸️ GAME PAUSED';
+          badge.style.color = '#81c784';
+          badge.style.borderColor = '#4caf50';
+        }
+      }
+    }
+  }
+
+  closeSettings() {
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal) {
+      settingsModal.classList.add('hidden');
+    }
+    this.lastTime = performance.now();
+  }
+
+  isGamePaused() {
+    // 1. If Main Menu / Splash screen is open, game is ALWAYS paused
+    const splashModal = document.getElementById('splash-modal');
+    if (splashModal && !splashModal.classList.contains('hidden')) {
+      return true;
+    }
+
+    // 2. In Multiplayer mode, NEVER pause during active matches (must stay synchronized in real time)
+    if (this.isMultiplayerGame) {
+      return false;
+    }
+
+    // 3. In Single-Player mode, pause if Settings or Info Guide modal is open
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal && !settingsModal.classList.contains('hidden')) {
+      return true;
+    }
+    const infoGuideModal = document.getElementById('info-guide-modal');
+    if (infoGuideModal && !infoGuideModal.classList.contains('hidden')) {
+      return true;
+    }
+
+    // 4. Pause if HUD Customizer is active
+    if (this.isCustomizingHUD) {
+      return true;
+    }
+
+    return false;
   }
 
   changeSail(newState) {
@@ -2998,17 +3384,85 @@ class Game {
     ctx.rotate(this.playerShip.heading);
 
     // Islands
-    this.archipelago.islands.forEach((isl) => {
+    const now = performance.now();
+    this.archipelago.islands.forEach((isl, index) => {
       const relX = (isl.pos.x - this.playerShip.position.x) * scale;
       const relZ = (isl.pos.y - this.playerShip.position.z) * scale;
+      const r = isl.radius * scale;
 
+      // 1. Turquoise shallow reef lagoon rim
       ctx.beginPath();
-      ctx.arc(relX, relZ, isl.radius * scale, 0, Math.PI * 2);
-      ctx.fillStyle = '#689f38';
+      ctx.arc(relX, relZ, r + 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.26)';
       ctx.fill();
-      ctx.strokeStyle = '#d7ccc8';
-      ctx.lineWidth = 2;
+
+      // 2. Golden sand shoreline ring (matches exact visible beach)
+      ctx.beginPath();
+      ctx.arc(relX, relZ, r + 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#dfc282';
+      ctx.fill();
+
+      // 3. Tropical green island interior
+      ctx.beginPath();
+      ctx.arc(relX, relZ, r, 0, Math.PI * 2);
+      ctx.fillStyle = isl.hasFort ? '#33691e' : '#558b2f';
+      ctx.fill();
+      ctx.strokeStyle = isl.hasFort ? '#ffd54f' : '#6d4c41';
+      ctx.lineWidth = isl.hasFort ? 2.5 : 1.5;
       ctx.stroke();
+
+      // 4. Proximity / Collision Alert Warning Ping
+      const distToPlayer = Math.hypot(isl.pos.x - this.playerShip.position.x, isl.pos.y - this.playerShip.position.z);
+      const isRecentHit = this.lastIslandHitIndex === index && (now - (this.lastIslandHitTime || 0) < 3000);
+      if (isRecentHit) {
+        const pulse = 4 + Math.sin(now * 0.015) * 3;
+        ctx.beginPath();
+        ctx.arc(relX, relZ, r + pulse, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ff1744';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      } else if (distToPlayer < isl.radius + 50) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(relX, relZ, r + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 179, 0, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 5. Fort or Island Name Label
+      if (isl.hasFort) {
+        ctx.save();
+        ctx.translate(relX, relZ);
+        ctx.fillStyle = '#ffb300';
+        ctx.strokeStyle = '#212121';
+        ctx.lineWidth = 1;
+        ctx.fillRect(-4, -4, 8, 8);
+        ctx.strokeRect(-4, -4, 8, 8);
+        ctx.fillStyle = '#d32f2f';
+        ctx.fillRect(-2, -6, 4, 3);
+        ctx.restore();
+
+        ctx.save();
+        ctx.font = 'bold 8px Cinzel, serif';
+        ctx.fillStyle = '#ffe082';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.85)';
+        ctx.shadowBlur = 3;
+        ctx.fillText('FORT', relX, relZ + 12);
+        ctx.restore();
+      } else if (isl.name) {
+        ctx.save();
+        ctx.font = '7px Cinzel, serif';
+        ctx.fillStyle = '#d7ccc8';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.85)';
+        ctx.shadowBlur = 2;
+        ctx.fillText(isl.name.toUpperCase(), relX, relZ + r + 8);
+        ctx.restore();
+      }
     });
 
     // Enemies
@@ -3300,8 +3754,56 @@ class Game {
     const delta = Math.min((now - this.lastTime) / 1000, 0.08);
     this.lastTime = now;
 
+    // Check Pause State:
+    // Game is paused when:
+    // - On the Main Menu / Splash Screen (background game is idle and paused!)
+    // - In Single-Player mode when Settings or Info Guide modal is open
+    // NOTE: In Multiplayer mode, the match stays live in real-time (never paused)
+    const paused = this.isGamePaused();
+
+    if (paused) {
+      // 1. Allow gamepad menu navigation & pause toggle
+      if (this.gamepad) {
+        this.gamepad.update(delta);
+      }
+
+      // 2. Cancel active broadside charge if open
+      if (this.broadsideCharge && this.broadsideCharge.active) {
+        this.cancelBroadsideCharge();
+      }
+
+      // 3. Gentle ambient ocean wave ripple (no ship speed, no drifting)
+      if (this.ocean) {
+        this.ocean.update(delta * 0.35, this.playerShip.position);
+      }
+
+      // Keep ships resting gently on wave heights without moving forward
+      if (this.playerShip && this.playerShip.group && this.ocean) {
+        const waveY = this.ocean.getWaveHeight(this.playerShip.position.x, this.playerShip.position.z);
+        this.playerShip.group.position.y = waveY + (this.playerShip.heave || 0);
+      }
+      if (this.enemies) {
+        for (const e of this.enemies) {
+          if (e && e.ship && e.ship.group && this.ocean) {
+            const eWaveY = this.ocean.getWaveHeight(e.ship.position.x, e.ship.position.z);
+            e.ship.group.position.y = eWaveY + (e.ship.heave || 0);
+          }
+        }
+      }
+
+      // 4. Stable camera update & render
+      this.updateCamera(0, this.isFirstFrame);
+      this.isFirstFrame = false;
+
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
     // 1. Process player inputs first
     this.updateControls(delta);
+    if (this.gamepad) {
+      this.gamepad.update(delta);
+    }
 
     // Check PvP victory/defeat in 1v1 multiplayer duel
     this.checkPvPWinLoss();
@@ -3357,6 +3859,9 @@ class Game {
 
     // 2. Update physical simulation
     this.ocean.update(delta, this.playerShip.position);
+    if (this.archipelago && typeof this.archipelago.update === 'function') {
+      this.archipelago.update(delta);
+    }
     this.playerShip.update(delta, this.wind);
     this.updateEnemies(delta);
 

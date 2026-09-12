@@ -8,6 +8,11 @@ export default defineConfig({
       'Access-Control-Allow-Origin': '*'
     }
   },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    outDir: 'dist',
+    assetsDir: 'assets'
+  },
   plugins: [
     {
       name: 'debug-logger',

@@ -52,15 +52,23 @@
         box.innerText += '\n' + msg;
       }
     }
+    const isLocalDev = Boolean(
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.endsWith('.local')
+    );
     const _origLog = console.log;
     console.log = function(...args) {
       _origLog.apply(console, args);
-      try {
-        fetch('/__debug_log', {
-          method: 'POST',
-          body: JSON.stringify({ type: 'log', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') })
-        }).catch(function() {});
-      } catch(e) {}
+      if (isLocalDev) {
+        try {
+          fetch('/__debug_log', {
+            method: 'POST',
+            body: JSON.stringify({ type: 'log', message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') })
+          }).catch(function() {});
+        } catch(e) {}
+      }
     };
     window.addEventListener('error', function(e) {
       if (!e.filename && e.message === 'Script error.') {
@@ -68,33 +76,37 @@
       }
       console.error('GLOBAL ERROR:', e);
       displayDebugError('[ERROR] ' + (e.message || 'Error') + ' (' + (e.filename || 'unknown') + ':' + (e.lineno || 0) + ')\n' + (e.error && e.error.stack ? e.error.stack : ''));
-      try {
-        fetch('/__debug_log', {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'error',
-            message: e.message,
-            filename: e.filename,
-            lineno: e.lineno,
-            colno: e.colno,
-            error: e.error ? (e.error.stack || e.error.message || String(e.error)) : null,
-            target: e.target ? (e.target.tagName + (e.target.src ? ' ' + e.target.src : '')) : null
-          })
-        }).catch(function() {});
-      } catch(err) {}
+      if (isLocalDev) {
+        try {
+          fetch('/__debug_log', {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'error',
+              message: e.message,
+              filename: e.filename,
+              lineno: e.lineno,
+              colno: e.colno,
+              error: e.error ? (e.error.stack || e.error.message || String(e.error)) : null,
+              target: e.target ? (e.target.tagName + (e.target.src ? ' ' + e.target.src : '')) : null
+            })
+          }).catch(function() {});
+        } catch(err) {}
+      }
     });
     window.addEventListener('unhandledrejection', function(e) {
       console.error('UNHANDLED REJECTION:', e);
       displayDebugError('[REJECTION] ' + e.reason);
-      try {
-        fetch('/__debug_log', {
-          method: 'POST',
-          body: JSON.stringify({
-            type: 'unhandledrejection',
-            reason: e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : String(e.reason)
-          })
-        }).catch(function() {});
-      } catch(err) {}
+      if (isLocalDev) {
+        try {
+          fetch('/__debug_log', {
+            method: 'POST',
+            body: JSON.stringify({
+              type: 'unhandledrejection',
+              reason: e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : String(e.reason)
+            })
+          }).catch(function() {});
+        } catch(err) {}
+      }
     });
   </script>
   <style>
@@ -876,13 +888,17 @@
       left: 0;
       width: 100%;
       height: 100%;
+      height: 100dvh;
       background: radial-gradient(circle at center, rgba(10, 15, 20, 0.88) 0%, rgba(5, 8, 10, 0.98) 100%);
       z-index: 100;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 16px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       text-align: center;
       transition: opacity 0.5s ease;
     }
@@ -1152,6 +1168,7 @@
       left: 0;
       width: 100%;
       height: 100%;
+      height: 100dvh;
       background: radial-gradient(circle at center, rgba(10, 5, 2, 0.85) 0%, rgba(5, 2, 1, 0.96) 100%);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
@@ -1159,6 +1176,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      padding: 12px;
+      box-sizing: border-box;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       opacity: 1;
       transition: opacity 0.3s ease, visibility 0.3s ease;
       visibility: visible;
@@ -1169,6 +1190,62 @@
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
+    }
+
+    /* Universal Scrollable Menus & Modals for Creating, Joining, Settings, End screens, Salvage, etc. */
+    .splash-card,
+    .multiplayer-card,
+    .settings-card,
+    .pvp-end-card,
+    .salvage-card,
+    .modal-card {
+      max-height: 88vh;
+      max-height: 88dvh;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      overscroll-behavior: contain;
+      box-sizing: border-box;
+    }
+
+    /* Custom styled scrollbars for all cards & menus */
+    .splash-card::-webkit-scrollbar,
+    .multiplayer-card::-webkit-scrollbar,
+    .settings-card::-webkit-scrollbar,
+    .pvp-end-card::-webkit-scrollbar,
+    .salvage-card::-webkit-scrollbar,
+    .modal-card::-webkit-scrollbar,
+    .difficulty-cards::-webkit-scrollbar,
+    .modal-overlay::-webkit-scrollbar,
+    #splash-modal::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+
+    .splash-card::-webkit-scrollbar-track,
+    .multiplayer-card::-webkit-scrollbar-track,
+    .settings-card::-webkit-scrollbar-track,
+    .pvp-end-card::-webkit-scrollbar-track,
+    .salvage-card::-webkit-scrollbar-track,
+    .modal-card::-webkit-scrollbar-track,
+    .difficulty-cards::-webkit-scrollbar-track,
+    .modal-overlay::-webkit-scrollbar-track,
+    #splash-modal::-webkit-scrollbar-track {
+      background: rgba(16, 10, 6, 0.6);
+      border-radius: 4px;
+    }
+
+    .splash-card::-webkit-scrollbar-thumb,
+    .multiplayer-card::-webkit-scrollbar-thumb,
+    .settings-card::-webkit-scrollbar-thumb,
+    .pvp-end-card::-webkit-scrollbar-thumb,
+    .salvage-card::-webkit-scrollbar-thumb,
+    .modal-card::-webkit-scrollbar-thumb,
+    .difficulty-cards::-webkit-scrollbar-thumb,
+    .modal-overlay::-webkit-scrollbar-thumb,
+    #splash-modal::-webkit-scrollbar-thumb {
+      background: #8d6e63;
+      border-radius: 4px;
+      border: 1px solid #d4af37;
     }
 
     .modal-header {
@@ -1207,6 +1284,38 @@
       background: #b71c1c;
       border-color: #ff5252;
       color: #fff;
+    }
+
+    .settings-card .modal-header,
+    .multiplayer-card .modal-header {
+      position: sticky;
+      top: -24px;
+      z-index: 35;
+      background: rgba(22, 14, 10, 0.98);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 10px 4px;
+      margin-top: -12px;
+      border-bottom: 1.5px solid #8d6e63;
+      display: flex;
+      align-items: center;
+    }
+
+    .settings-pause-badge {
+      display: inline-flex;
+      align-items: center;
+      font-family: 'Cinzel', Georgia, serif;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      border: 1px solid #4caf50;
+      color: #81c784;
+      background: rgba(0, 0, 0, 0.45);
+      margin-left: auto;
+      margin-right: 12px;
+      white-space: nowrap;
     }
 
     /* Top-Right Settings & Minimap Column */
@@ -1625,6 +1734,180 @@
       background: linear-gradient(180deg, #f57f17 0%, #e65100 100%);
       border-color: #ffd54f;
       color: #fff;
+    }
+
+    /* How to Play Guide & Controller Layout in Settings */
+    .guide-section,
+    .controller-guide-section {
+      background: rgba(30, 20, 14, 0.9);
+      border: 1.5px solid #8d6e63;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-top: 6px;
+    }
+
+    .guide-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 900;
+      color: #ffd54f;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(141, 110, 99, 0.4);
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+
+    .guide-icon {
+      font-size: 18px;
+    }
+
+    .guide-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .guide-item {
+      background: rgba(45, 30, 22, 0.75);
+      border: 1px solid #5d4037;
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: left;
+    }
+
+    .guide-item-title {
+      font-size: 12.5px;
+      font-weight: bold;
+      color: #ffe082;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .guide-item-body {
+      font-size: 11.5px;
+      color: #cfd8dc;
+      line-height: 1.45;
+    }
+
+    .guide-item-body strong {
+      color: #fff9c4;
+    }
+
+    .controller-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(45, 30, 22, 0.75);
+      border: 1px solid #5d4037;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+
+    .ctrl-btn-badge {
+      background: #1e130c;
+      border: 1px solid #d4af37;
+      color: #ffd54f;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-family: monospace, sans-serif;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .ctrl-action {
+      color: #eceff1;
+      font-size: 11.5px;
+      text-align: right;
+      flex: 1;
+    }
+
+    /* Info Guide & Controls Modal */
+    #info-guide-modal {
+      z-index: 250;
+    }
+
+    .info-guide-card {
+      max-width: 620px;
+      width: 92%;
+      background: linear-gradient(180deg, rgba(28, 18, 12, 0.98) 0%, rgba(14, 8, 5, 0.99) 100%);
+      border: 2px solid #d4af37;
+      border-radius: 14px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.9), 0 0 30px rgba(212, 175, 55, 0.35);
+      padding: 20px 24px;
+      max-height: 88vh;
+      max-height: 88dvh;
+      overflow-y: auto;
+    }
+
+    .info-guide-card .modal-header {
+      position: sticky;
+      top: -20px;
+      z-index: 35;
+      background: rgba(22, 14, 10, 0.98);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      padding: 10px 4px;
+      margin-top: -10px;
+      border-bottom: 1.5px solid #8d6e63;
+    }
+
+    .guide-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .guide-tab-btn {
+      flex: 1;
+      padding: 10px 14px;
+      background: rgba(35, 22, 16, 0.85);
+      border: 1.5px solid #8d6e63;
+      border-radius: 8px;
+      color: #d7ccc8;
+      font-family: 'Cinzel', Georgia, serif;
+      font-size: 12.5px;
+      font-weight: bold;
+      letter-spacing: 0.8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+
+    .guide-tab-btn:hover {
+      background: rgba(60, 40, 28, 0.95);
+      border-color: #ffd54f;
+      color: #fff;
+    }
+
+    .guide-tab-btn.active {
+      background: linear-gradient(180deg, #f57f17 0%, #e65100 100%);
+      border-color: #ffd54f;
+      color: #fff;
+      box-shadow: 0 0 14px rgba(255, 213, 79, 0.5);
+    }
+
+    .guide-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .guide-panel.hidden {
+      display: none !important;
     }
 
     /* HUD Customizer Mode Bar */
@@ -2898,7 +3181,7 @@
         </div>
         <div class="stats-row">
           <span>Range: <strong id="enemy-dist-val">0</strong>m</span>
-          <span>Hull: <strong id="enemy-hp-val">280/280 (100%)</strong></span>
+          <span>Hull: <strong id="enemy-hp-val">200/200 (100%)</strong></span>
         </div>
       </div>
     </div>
@@ -3036,10 +3319,10 @@
       <div style="font-size: 11px; font-weight: bold; color: #ffb300; margin-bottom: 4px;">SAILS</div>
       <button class="sail-step-btn up" id="btn-sail-up" title="Sail Up (W)">▲</button>
       <div class="lever-track" style="margin: 6px 0;">
-        <button class="sail-btn selected" id="btn-sail-2" title="Full Sail (W)">FULL</button>
-        <div class="lever-notch active" id="notch-2"></div>
-        <button class="sail-btn" id="btn-sail-1" title="Half Sail">HALF</button>
-        <div class="lever-notch" id="notch-1"></div>
+        <button class="sail-btn" id="btn-sail-2" title="Full Sail (W)">FULL</button>
+        <div class="lever-notch" id="notch-2"></div>
+        <button class="sail-btn selected" id="btn-sail-1" title="Half Sail">HALF</button>
+        <div class="lever-notch active" id="notch-1"></div>
         <button class="sail-btn" id="btn-sail-0" title="Furled / Stop (S)">FURL</button>
         <div class="lever-notch" id="notch-0"></div>
       </div>
@@ -3109,6 +3392,11 @@
             </button>
             <div class="menu-subtext">Touch & desktop controls supported</div>
           </div>
+
+          <button id="btn-menu-guide" class="main-menu-btn secondary-btn" style="border-color: #ffd54f;">
+            <span class="btn-icon">📜</span>
+            <span class="btn-text">HOW TO PLAY & CONTROLS</span>
+          </button>
         </div>
       </div>
 
@@ -3173,6 +3461,7 @@
     <div class="settings-card">
       <div class="modal-header">
         <h2>⚙️ SHIP SETTINGS & CONTROLS</h2>
+        <div id="settings-pause-indicator" class="settings-pause-badge">⏸️ GAME PAUSED</div>
         <button id="btn-close-settings" class="modal-close-btn" title="Close Settings">✕</button>
       </div>
 
@@ -3184,6 +3473,15 @@
             <div class="setting-desc">Realistic ocean waves, cannon volleys, and orchestral naval soundtrack.</div>
           </div>
           <button id="btn-settings-audio" class="setting-toggle-btn active">🔊 Audio: ON</button>
+        </div>
+
+        <!-- Setting: Always Play Battle / Fight Music -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">⚔️ Always Play Battle Music</div>
+            <div class="setting-desc">Play intense orchestral combat soundtrack continuously, even when sailing or exploring peaceful waters.</div>
+          </div>
+          <button id="btn-settings-fight-music" class="setting-toggle-btn">⚔️ Fight Music: OFF</button>
         </div>
 
         <!-- Setting 2: Graphics Quality & Performance -->
@@ -3227,13 +3525,38 @@
           <button id="btn-open-customizer" class="setting-action-btn primary">🎨 Customize Controls</button>
         </div>
 
-        <!-- Setting 5: Quit to Main Menu -->
+        <!-- Setting 5: How to Play Field Guide Button -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">📜 How to Play Guide</div>
+            <div class="setting-desc">Captain's field manual for sailing, broadsides, tactical dodges, and ramming.</div>
+          </div>
+          <button id="btn-open-how-to-play" class="setting-action-btn primary" style="background: linear-gradient(180deg, #388e3c 0%, #1b5e20 100%); border-color: #81c784; color: #fff;">📖 How to Play</button>
+        </div>
+
+        <!-- Setting 6: Controller Button Layout Button -->
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">🎮 Controller Button Layout</div>
+            <div class="setting-desc">Gamepad button mapping diagram for Xbox, PlayStation, and Switch controllers.</div>
+          </div>
+          <button id="btn-open-controller-layout" class="setting-action-btn primary" style="background: linear-gradient(180deg, #1976d2 0%, #0d47a1 100%); border-color: #64b5f6; color: #fff;">🎮 Controller Layout</button>
+        </div>
+
+        <!-- Setting 7: Quit to Main Menu (Placed above Close Settings) -->
         <div class="setting-row">
           <div class="setting-info">
             <div class="setting-title">Quit to Main Menu</div>
             <div class="setting-desc">Abandon current voyage or naval duel and return to the main title screen.</div>
           </div>
           <button id="btn-settings-quit" class="setting-action-btn danger" style="background: linear-gradient(180deg, #b71c1c 0%, #7f0000 100%); border-color: #ef5350; color: #fff; box-shadow: 0 2px 8px rgba(183, 28, 28, 0.4);">🚪 Quit Game</button>
+        </div>
+
+        <!-- Close Settings Button at bottom of scrollable settings -->
+        <div style="margin-top: 10px; display: flex; justify-content: center;">
+          <button id="btn-close-settings-bottom" class="setting-action-btn primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: bold; letter-spacing: 1px;">
+            ✕ CLOSE SETTINGS
+          </button>
         </div>
       </div>
     </div>
@@ -3384,6 +3707,8 @@
         </button>
       </div>
     </div>
+  </div>
+
   <!-- HUD Share / Import Modal -->
   <div id="hud-share-modal" class="modal-overlay hidden">
     <div class="modal-card" style="max-width: 480px; text-align: left; background: rgba(22, 14, 10, 0.97); border: 2px solid #ffd54f; box-shadow: 0 12px 36px rgba(0,0,0,0.9), 0 0 24px rgba(255, 213, 79, 0.35);">
@@ -3417,6 +3742,160 @@
     </div>
   </div>
 
+  <!-- Mobile Controls Customizer Tip Modal -->
+  <div id="mobile-customizer-modal" class="modal-overlay hidden">
+    <div class="modal-card" style="max-width: 440px; text-align: center; background: linear-gradient(180deg, rgba(28, 18, 12, 0.98) 0%, rgba(14, 8, 5, 0.99) 100%); border: 2px solid #ffd54f; box-shadow: 0 16px 48px rgba(0,0,0,0.9), 0 0 28px rgba(255, 213, 79, 0.4); padding: 24px 20px;">
+      <div style="font-size: 40px; margin-bottom: 8px;">📱 🎨</div>
+      <h2 style="color: #ffd54f; font-size: 20px; font-weight: 900; letter-spacing: 1.5px; margin-bottom: 12px; text-transform: uppercase;">
+        CUSTOMIZE YOUR CONTROLS
+      </h2>
+      <p style="color: #efebe9; font-size: 13.5px; line-height: 1.5; margin-bottom: 20px;">
+        Ahoy Captain! You can move and resize all on-screen buttons (Steering, Cannons, Dodges, Sails) in <strong>Settings ⚙️</strong> to comfortably fit your phone's screen and hands.
+      </p>
+      <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+        <button id="btn-mobile-tip-customize" class="mp-action-btn primary" style="font-size: 14px; padding: 11px 18px; border-radius: 6px; cursor: pointer;">
+          🎨 Customize Controls Now
+        </button>
+        <button id="btn-mobile-tip-dismiss" class="mp-action-btn secondary" style="font-size: 13px; padding: 11px 16px; border-radius: 6px; cursor: pointer;">
+          ⚓ Got It, Set Sail!
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- How to Play & Controller Layout Info Modal -->
+  <div id="info-guide-modal" class="modal-overlay hidden">
+    <div class="modal-card info-guide-card">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 22px;" id="info-modal-icon">📜</span>
+          <h2 id="info-modal-title">CAPTAIN'S MANUAL & CONTROLS</h2>
+        </div>
+        <button id="btn-close-info-modal" class="modal-close-btn" title="Close">✕</button>
+      </div>
+
+      <!-- Tab Switcher -->
+      <div class="guide-tabs">
+        <button type="button" id="tab-btn-how-to-play" class="guide-tab-btn active">📜 HOW TO PLAY</button>
+        <button type="button" id="tab-btn-controller" class="guide-tab-btn">🎮 CONTROLLER LAYOUT</button>
+      </div>
+
+      <!-- Panel 1: How to Play Field Guide -->
+      <div id="guide-panel-how-to-play" class="guide-panel">
+        <div class="guide-grid">
+          <div class="guide-item">
+            <div class="guide-item-title">⛵ Sailing & Speed</div>
+            <div class="guide-item-body">
+              Use <strong>Sails Up / Down</strong> (or <strong>W/S</strong> / D-Pad) to shift between <strong>Furl (0)</strong>, <strong>Half Sail</strong>, and <strong>Full Sail (Max)</strong>. Watch the wind vane on your compass: sailing with the wind grants massive speed!
+            </div>
+          </div>
+
+          <div class="guide-item">
+            <div class="guide-item-title">☸️ Steering Modes</div>
+            <div class="guide-item-body">
+              Choose between the authentic <strong>Helm Wheel</strong> or tap <strong>◀ ▶ Steer Buttons</strong>. Mobile defaults to Left/Right buttons for agile maneuvering, and PC defaults to the Wheel.
+            </div>
+          </div>
+
+          <div class="guide-item">
+            <div class="guide-item-title">💥 Broadside Cannons</div>
+            <div class="guide-item-body">
+              Fire <strong>Port (Left)</strong> or <strong>Starboard (Right)</strong> cannons with buttons, triggers (LT/RT), or Space/F keys. Red aim arcs show the firing cone. Lead your shots ahead of moving enemy ships!
+            </div>
+          </div>
+
+          <div class="guide-item">
+            <div class="guide-item-title">⚡ Tactical Dodges</div>
+            <div class="guide-item-body">
+              <strong>Forward Dodge:</strong> Quick speed surge to evade cannon volleys or cut off enemy ships.<br/>
+              <strong>Reverse Dodge:</strong> Emergency reverse brake to slip behind enemy broadsides.
+            </div>
+          </div>
+
+          <div class="guide-item">
+            <div class="guide-item-title">⚓ Prow Ramming Strike (Capped at 30%)</div>
+            <div class="guide-item-body">
+              Charge forward at high speed (&gt;= 3.5 knots) bow-first into an enemy ship to deal up to <strong>30% devastating ramming damage</strong>! Your reinforced prow absorbs the impact with 0 recoil damage. <em>Ships must back away / disengage before another ram hit can be dealt!</em>
+            </div>
+          </div>
+
+          <div class="guide-item">
+            <div class="guide-item-title">🪙 Sunk Ships & Salvage Plunder</div>
+            <div class="guide-item-body">
+              When you sink an enemy flagship, it breaks into floating treasure crates & rum barrels. Sail close to salvage them for <strong>Gold</strong> and <strong>Hull Repairs</strong>!
+            </div>
+          </div>
+
+          <div class="guide-item">
+            <div class="guide-item-title">⚔️ 1v1 Multiplayer Naval Duels</div>
+            <div class="guide-item-body">
+              Challenge friends peer-to-peer (P2P WebRTC)! Host or join with a 5-letter code. Last ship standing wins the high seas bounty.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 2: Controller Button Layout -->
+      <div id="guide-panel-controller" class="guide-panel hidden">
+        <div class="controller-grid">
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">🕹️ Left Stick / D-Pad ◀ ▶</div>
+            <div class="ctrl-action">Steer Ship (Rudder Port / Starboard)</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">▲ / ▼ D-Pad (or Stick Y)</div>
+            <div class="ctrl-action">Sails Up (Full/Half) / Down (Half/Furl)</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">LT / L2 (or Ⓧ / ▢)</div>
+            <div class="ctrl-action">Fire Port (Left) Broadside Cannons</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">RT / R2 (or Ⓑ / ◯)</div>
+            <div class="ctrl-action">Fire Starboard (Right) Broadside Cannons</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">RB / R1</div>
+            <div class="ctrl-action">Tactical Forward Dodge Surge</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">LB / L1</div>
+            <div class="ctrl-action">Tactical Reverse Dodge Brake</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">Ⓨ / △ (or R3 / Ⓐ)</div>
+            <div class="ctrl-action">Toggle Enemy Ship Target Lock</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">🕹️ Right Stick</div>
+            <div class="ctrl-action">360° Free Camera Orbit & Pitch</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">Start / Menu / Options</div>
+            <div class="ctrl-action">Open / Close Ship Settings Menu</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-btn-badge">📳 Dual Rumble Feedback</div>
+            <div class="ctrl-action">Haptic vibrations for crashes, fire, & dodges</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
+        <button id="btn-close-info-modal-bottom" class="cust-btn close" style="padding: 10px 24px; font-size: 13px; font-weight: bold; background: #26160c; border: 1.5px solid #ffd54f; color: #ffd54f; border-radius: 6px; cursor: pointer;">✕ Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Force Landscape Orientation Overlay -->
   <div id="orientation-overlay" class="hidden">
     <div class="orientation-box">
@@ -3441,20 +3920,22 @@
       .catch((err) => {
         console.error('❌ Failed to import /src/main.js:', err);
         displayDebugError('[IMPORT ERROR] ' + (err ? (err.name + ': ' + err.message + '\n' + (err.stack || '')) : 'Unknown error'));
-        try {
-          fetch('/__debug_log', {
-            method: 'POST',
-            body: JSON.stringify({
-              type: 'import_error',
-              name: err ? err.name : null,
-              message: err ? err.message : null,
-              stack: err ? err.stack : null,
-              line: err ? err.line : null,
-              column: err ? err.column : null,
-              sourceURL: err ? err.sourceURL : null
-            })
-          }).catch(function() {});
-        } catch(e) {}
+        if (typeof isLocalDev !== 'undefined' && isLocalDev) {
+          try {
+            fetch('/__debug_log', {
+              method: 'POST',
+              body: JSON.stringify({
+                type: 'import_error',
+                name: err ? err.name : null,
+                message: err ? err.message : null,
+                stack: err ? err.stack : null,
+                line: err ? err.line : null,
+                column: err ? err.column : null,
+                sourceURL: err ? err.sourceURL : null
+              })
+            }).catch(function() {});
+          } catch(e) {}
+        }
       });
   </script>
 </body>

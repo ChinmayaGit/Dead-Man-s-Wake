@@ -8,10 +8,16 @@ export class SoundController {
     this.oceanAudio = new Audio('/audio/ocean.mp3');
     this.combatAudio = new Audio('/audio/combat.mp3');
 
+    // Fight Music Only / Always Play Battle Soundtrack option
+    this.alwaysCombatMusic = false;
+    try {
+      this.alwaysCombatMusic = localStorage.getItem('deadmanswake_always_fight_music') === 'true';
+    } catch (e) {}
+
     this.oceanAudio.loop = true;
     this.combatAudio.loop = true;
-    this.oceanAudio.volume = 0.5;
-    this.combatAudio.volume = 0;
+    this.oceanAudio.volume = this.alwaysCombatMusic ? 0.15 : 0.5;
+    this.combatAudio.volume = this.alwaysCombatMusic ? 0.65 : 0;
   }
 
   init() {
@@ -21,16 +27,47 @@ export class SoundController {
       this.ctx = new AudioCtx();
       this.initialized = true;
 
-      // Start ambient music on first user gesture
+      // Start ambient/battle music on first user gesture
       this.oceanAudio.play().catch(() => {});
       this.combatAudio.play().catch(() => {});
+
+      if (this.alwaysCombatMusic) {
+        this.bgmMode = 'combat';
+        this.fadeAudio(this.oceanAudio, 0.15, 600);
+        this.fadeAudio(this.combatAudio, 0.65, 600);
+      }
     } catch (e) {
       console.warn('Web Audio API not supported', e);
     }
   }
 
+  setAlwaysCombatMusic(enabled) {
+    this.alwaysCombatMusic = !!enabled;
+    try {
+      localStorage.setItem('deadmanswake_always_fight_music', this.alwaysCombatMusic ? 'true' : 'false');
+    } catch (e) {}
+
+    if (this.alwaysCombatMusic) {
+      this.bgmMode = 'combat';
+      this.fadeAudio(this.oceanAudio, 0.15, 600);
+      this.fadeAudio(this.combatAudio, 0.65, 600);
+    } else {
+      this.setCombatMode(false);
+    }
+  }
+
   setCombatMode(active) {
     if (!this.initialized) return;
+    if (this.alwaysCombatMusic) {
+      // Always play combat music when option is turned ON!
+      if (this.bgmMode !== 'combat') {
+        this.bgmMode = 'combat';
+        this.fadeAudio(this.oceanAudio, 0.15, 600);
+        this.fadeAudio(this.combatAudio, 0.65, 600);
+      }
+      return;
+    }
+
     if (active && this.bgmMode !== 'combat') {
       this.bgmMode = 'combat';
       this.fadeAudio(this.oceanAudio, 0.15, 1000);

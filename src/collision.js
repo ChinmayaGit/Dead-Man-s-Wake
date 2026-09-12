@@ -9,11 +9,16 @@ export class CollisionSystem {
     this.onCameraShake = callbacks.onCameraShake || null;
     this.onPlayerDamage = callbacks.onPlayerDamage || null;
     this.onEnemyDamage = callbacks.onEnemyDamage || null;
+    this.onIslandWarning = callbacks.onIslandWarning || null;
     this.playerDamageMultiplier = 1.0;
     this.enemyDamageMultiplier = 1.0;
 
     // Cooldown trackers to avoid multi-frame damage spam (key -> cooldown remaining)
     this.cooldowns = new Map();
+
+    // Ram Strike Arming State: Ships must go back / disengage (dist >= 21m) before another hit can deal damage
+    this.ramArmedPairs = new Map();
+    this.islandRamArmed = new Map();
   }
 
   setDifficultyMultipliers(playerMult = 1.0, enemyMult = 1.0) {
@@ -86,8 +91,8 @@ export class CollisionSystem {
   // -------------------------------------------------------------
   checkShipIslandCollision(ship, isPlayer) {
     const forward = ship.getForwardVector();
-    const bowPos = ship.position.clone().addScaledVector(forward, 7.5);
-    const sternPos = ship.position.clone().addScaledVector(forward, -7.5);
+    const bowPos = ship.position.clone().addScaledVector(forward, 6.5);
+    const sternPos = ship.position.clone().addScaledVector(forward, -6.5);
 
     this.archipelago.islands.forEach((isl, index) => {
       const toCenterX = ship.position.x - isl.pos.x;
@@ -97,39 +102,56 @@ export class CollisionSystem {
       const bowDist = Math.hypot(bowPos.x - isl.pos.x, bowPos.z - isl.pos.y);
       const sternDist = Math.hypot(sternPos.x - isl.pos.x, sternPos.z - isl.pos.y);
 
-      // Effective island shore buffer: island radius + ship collision boundary
-      const shoreRadius = isl.radius + 3.5;
-      const minCenterDist = shoreRadius + 5.0;
+      // Visible golden sand beach shoreline radius
+      const shoreRadius = isl.radius * 0.96;
+      const islandKey = `island_${isPlayer ? 'player' : 'enemy'}_${index}`;
 
-      // Check if bow, center, or stern penetrates shore
-      if (centerDist < minCenterDist || bowDist < shoreRadius || sternDist < shoreRadius) {
+      // When ship backs away from the island into open water, re-arm crash damage!
+      if (centerDist > shoreRadius + 14.0) {
+        this.islandRamArmed.set(islandKey, true);
+      }
+
+      // Check exact hull penetration against visible sand
+      const bowPen = shoreRadius - bowDist;
+      const sternPen = shoreRadius - sternDist;
+      const centerPen = (shoreRadius + 2.0) - centerDist;
+      const maxPen = Math.max(bowPen, sternPen, centerPen);
+
+      // Only repel when ship bow or hull physically touches the visible sand!
+      if (maxPen > 0) {
         // Physical repulsion vector from island center towards ship
         const normDist = centerDist > 0.001 ? centerDist : 1.0;
         const normX = toCenterX / normDist;
         const normZ = toCenterZ / normDist;
 
-        // Push ship out of the island landmass
-        if (centerDist < minCenterDist) {
-          const penetration = minCenterDist - centerDist;
-          ship.position.x += normX * penetration;
-          ship.position.z += normZ * penetration;
-        }
+        // Push ship out of the sand by exact penetration distance
+        ship.position.x += normX * maxPen;
+        ship.position.z += normZ * maxPen;
 
         // Vector pointing directly from ship towards island center
         const toIsland = new THREE.Vector3(-normX, 0, -normZ);
         const frontAlignment = forward.dot(toIsland); // 1.0 = direct head-on collision from front
 
         const shipSpeed = Math.max(0, ship.speed || 0);
-        const isFrontHit = frontAlignment > 0.20 && shipSpeed > 1.6;
+        // Only trigger front-impact crash damage if armed and sailing with significant speed (>= 3.8 m/s)
+        const isArmed = this.islandRamArmed.get(islandKey) !== false;
+        const isFrontHit = isArmed && frontAlignment > 0.22 && shipSpeed >= 3.8;
 
         const cdKey = `island_${isPlayer ? 'player' : 'enemy'}_${index}`;
 
         if (isFrontHit && !this.isOnCooldown(cdKey)) {
-          this.setCooldown(cdKey, 1.25);
+          this.setCooldown(cdKey, 1.8);
+          // Disarm island crash: ship must back away to open water before taking crash damage again!
+          this.islandRamArmed.set(islandKey, false);
 
-          // Front-impact damage proportional to sailing speed and head-on alignment
-          const speedFactor = Math.min(24.0, shipSpeed);
-          const damage = Math.round(14 + speedFactor * 1.9 * Math.max(0.4, frontAlignment));
+          // Front-impact damage proportional to sailing speed, strictly capped at 30% of target max health
+          const shipMaxHealth = ship.maxHealth || 100;
+          const maxIslandDmg = Math.round(shipMaxHealth * 0.30);
+          const minIslandDmg = Math.max(1, Math.round(shipMaxHealth * 0.10));
+          const excessSpeed = Math.max(0, shipSpeed - 3.8);
+          const speedRatio = Math.min(1.0, (excessSpeed / 9.0) * Math.max(0.4, frontAlignment));
+          const rawDamage = Math.round(minIslandDmg + (maxIslandDmg - minIslandDmg) * speedRatio);
+          const damage = Math.min(maxIslandDmg, Math.max(minIslandDmg, rawDamage));
 
           ship.takeDamage(damage);
 
@@ -145,8 +167,10 @@ export class CollisionSystem {
             this.sound.playRammingCrash();
           }
 
-          // Elastic rebound: kick speed backwards and drop sail state
-          ship.speed = -Math.min(3.6, shipSpeed * 0.42);
+          // Elastic rebound: kick speed backwards and push hull into open water
+          ship.speed = -Math.min(4.2, Math.max(2.8, shipSpeed * 0.5));
+          ship.position.x += normX * 3.5;
+          ship.position.z += normZ * 3.5;
           if (ship.sailState === 2) {
             ship.setSailState(1); // Knock sails from Full to Half on crash
           }
@@ -154,10 +178,15 @@ export class CollisionSystem {
           if (isPlayer) {
             if (this.onCameraShake) this.onCameraShake(0.95, 0.45);
             if (this.onPlayerDamage) this.onPlayerDamage(damage);
+            if (this.onIslandWarning) this.onIslandWarning(isl.name || 'Island', index);
           }
         } else {
-          // Glancing side scrape against shore rocks: friction deceleration
-          ship.speed = Math.max(0, shipSpeed * 0.88);
+          // Glancing side scrape or touching shore rocks: friction deceleration, 0 crash damage
+          ship.speed = Math.max(0, shipSpeed * 0.85);
+          if (isPlayer && shipSpeed > 2.0 && !this.isOnCooldown(`scrape_${index}`)) {
+            this.setCooldown(`scrape_${index}`, 2.0);
+            if (this.onIslandWarning) this.onIslandWarning(isl.name || 'Island', index, true);
+          }
         }
       }
     });
@@ -174,6 +203,14 @@ export class CollisionSystem {
 
     // Collision threshold: Ships are ~15m long, 5.5m wide; effective circle radius ~5.8m each
     const minSeparation = 11.8;
+    const disengageDistance = 26.0; // Distance ship must go back / separate to re-arm ramming attack
+
+    const pairKey = `ship_ram_${enemy.name || 'target'}`;
+
+    // When ships back away / disengage beyond 26m, re-arm the ramming strike!
+    if (dist >= disengageDistance) {
+      this.ramArmedPairs.set(pairKey, true);
+    }
 
     if (dist < minSeparation) {
       // Overlap resolution: push both ships apart equally along collision axis
@@ -187,148 +224,161 @@ export class CollisionSystem {
       enemyShip.position.x += normX * overlap * 0.5;
       enemyShip.position.z += normZ * overlap * 0.5;
 
-      const cdKey = `ship_ram_${enemy.name}`;
+      const playerForward = playerShip.getForwardVector();
+      const enemyForward = enemyShip.getForwardVector();
+      const toEnemyVec = new THREE.Vector3(normX, 0, normZ);
+      const toPlayerVec = toEnemyVec.clone().negate();
 
-      if (!this.isOnCooldown(cdKey)) {
-        this.setCooldown(cdKey, 1.2);
+      // Check if player is hitting enemy from front (Ramming prow impact)
+      const playerFrontRam = playerForward.dot(toEnemyVec) > 0.38;
+      // Check if enemy is hitting player from front
+      const enemyFrontRam = enemyForward.dot(toPlayerVec) > 0.38;
 
-        const playerForward = playerShip.getForwardVector();
-        const enemyForward = enemyShip.getForwardVector();
-        const toEnemyVec = new THREE.Vector3(normX, 0, normZ);
-        const toPlayerVec = toEnemyVec.clone().negate();
+      const playerSpeed = Math.max(0, playerShip.speed || 0);
+      const enemySpeed = Math.max(0, enemyShip.speed || 0);
 
-        // Check if player is hitting enemy from front (Ramming prow impact)
-        const playerFrontRam = playerForward.dot(toEnemyVec) > 0.38;
-        // Check if enemy is hitting player from front
-        const enemyFrontRam = enemyForward.dot(toPlayerVec) > 0.38;
+      // Contact midpoint in 3D world space
+      const contactPos = playerShip.position.clone().add(enemyShip.position).multiplyScalar(0.5);
+      contactPos.y = Math.max(playerShip.heave, enemyShip.heave) + 1.8;
 
-        const playerSpeed = Math.max(0, playerShip.speed || 0);
-        const enemySpeed = Math.max(0, enemyShip.speed || 0);
+      // Check if ram is armed (initial state is armed until a hit occurs)
+      const isArmed = this.ramArmedPairs.get(pairKey) !== false;
 
-        // Contact midpoint in 3D world space
-        const contactPos = playerShip.position.clone().add(enemyShip.position).multiplyScalar(0.5);
-        contactPos.y = Math.max(playerShip.heave, enemyShip.heave) + 1.8;
+      if (isArmed && playerFrontRam && !enemyFrontRam && playerSpeed >= 3.8 && !this.isOnCooldown(pairKey)) {
+        // ========================================================
+        // PLAYER RAMS ENEMY SHIP WITH BOW (Front Ramming Attack!)
+        // ========================================================
+        this.setCooldown(pairKey, 2.5);
+        // Disarm ramming strike: Player MUST go back / disengage to dist >= 26m before ramming again!
+        this.ramArmedPairs.set(pairKey, false);
 
-        if (playerFrontRam && !enemyFrontRam && playerSpeed > 1.2) {
-          // ========================================================
-          // PLAYER RAMS ENEMY SHIP WITH BOW (Front Ramming Attack!)
-          // ========================================================
-          // Massive ramming strike dealt to enemy ship (28 to 55 damage!)
-          const enemyRamDmg = Math.round((28 + playerSpeed * 2.2) * (this.playerDamageMultiplier || 1.0));
-          // Attacker's reinforced prow absorbs impact: zero recoil damage to attacker
-          const playerRecoilDmg = 0;
+        // Front hit damage strictly capped at 30% of target ship's max health (e.g. 500 HP -> max 150)
+        const targetMaxHp = enemyShip.maxHealth || 100;
+        const maxRamDmg = Math.round(targetMaxHp * 0.30);
+        const minRamDmg = Math.max(1, Math.round(targetMaxHp * 0.12));
+        const excessSpeed = Math.max(0, playerSpeed - 3.8);
+        const speedRatio = Math.min(1.0, excessSpeed / 9.0);
+        const rawDmg = Math.round((minRamDmg + (maxRamDmg - minRamDmg) * speedRatio) * (this.playerDamageMultiplier || 1.0));
+        const enemyRamDmg = Math.min(maxRamDmg, Math.max(minRamDmg, rawDmg));
+        // Attacker's reinforced prow absorbs impact: zero recoil damage to attacker
+        const playerRecoilDmg = 0;
 
-          enemyShip.takeDamage(enemyRamDmg);
-          if (this.onEnemyDamage) {
-            this.onEnemyDamage(enemyShip, enemyRamDmg, true);
-          }
-          if (this.combat && this.combat.spawnDamageNumber) {
-            this.combat.spawnDamageNumber(contactPos, enemyRamDmg, 5);
-          }
-
-          // Impact physics: rebound player slightly and disrupt enemy velocity
-          playerShip.speed = -Math.min(2.5, playerSpeed * 0.25);
-          enemyShip.speed = Math.max(0, enemySpeed * 0.3);
-
-          // Spurt wood splinters, debris and water surge
-          this.combat.spawnSplinterExplosion(contactPos);
-          this.combat.spawnSplinterExplosion(contactPos.clone().add(new THREE.Vector3(0, 1.2, 0)));
-          this.combat.spawnWaterSplash(contactPos);
-
-          if (this.sound && this.sound.playRammingCrash) {
-            this.sound.playRammingCrash();
-          }
-
-          if (this.onCameraShake) this.onCameraShake(1.2, 0.5);
-
-        } else if (playerFrontRam && enemyFrontRam && (playerSpeed > 1.2 || enemySpeed > 1.2)) {
-          // ========================================================
-          // HEAD-ON COLLISION (Both Ships Ram Each Other Bow-to-Bow!)
-          // ========================================================
-          const sharedSpeed = Math.max(playerSpeed, enemySpeed);
-          const pDmg = Math.round((18 + sharedSpeed * 1.6) * (this.enemyDamageMultiplier || 1.0));
-          const eDmg = Math.round((18 + sharedSpeed * 1.6) * (this.playerDamageMultiplier || 1.0));
-
-          playerShip.takeDamage(pDmg);
-          enemyShip.takeDamage(eDmg);
-
-          if (this.onEnemyDamage) {
-            this.onEnemyDamage(enemyShip, eDmg, true);
-          }
-          if (this.onPlayerDamage) this.onPlayerDamage(pDmg);
-          if (this.combat && this.combat.spawnDamageNumber) {
-            this.combat.spawnDamageNumber(contactPos, eDmg, 5);
-          }
-
-          playerShip.speed = -Math.min(2.8, playerSpeed * 0.3);
-          enemyShip.speed = -Math.min(2.8, enemySpeed * 0.3);
-
-          this.combat.spawnSplinterExplosion(contactPos);
-          this.combat.spawnWaterSplash(contactPos);
-
-          if (this.sound && this.sound.playRammingCrash) {
-            this.sound.playRammingCrash();
-          }
-          if (this.onCameraShake) this.onCameraShake(1.3, 0.6);
-
-        } else if (!playerFrontRam && enemyFrontRam && enemySpeed > 1.4) {
-          // ========================================================
-          // ENEMY RAMS PLAYER FROM FRONT
-          // ========================================================
-          const playerDamage = Math.round((22 + enemySpeed * 1.8) * (this.enemyDamageMultiplier || 1.0));
-
-          playerShip.takeDamage(playerDamage);
-          // Note: Defending ship takes damage; never send damage back to the attacker over network
-
-          enemyShip.speed = -Math.min(2.5, enemySpeed * 0.3);
-
-          this.combat.spawnSplinterExplosion(contactPos);
-          this.combat.spawnWaterSplash(contactPos);
-
-          if (this.sound && this.sound.playRammingCrash) {
-            this.sound.playRammingCrash();
-          }
-
-          if (this.onCameraShake) this.onCameraShake(1.1, 0.5);
-          if (this.onPlayerDamage) this.onPlayerDamage(playerDamage);
-
-        } else {
-          // ========================================================
-          // SIDESWIPE / MUTUAL SHIP COLLISION
-          // ========================================================
-          const relSpeed = Math.max(playerSpeed, enemySpeed);
-          if (relSpeed > 1.4) {
-            if (playerSpeed >= enemySpeed) {
-              // Player was faster and sideswiped enemy: deal damage to enemy, 0 damage to player
-              const sideEnemyDmg = Math.round((10 + playerSpeed * 1.4) * (this.playerDamageMultiplier || 1.0));
-              enemyShip.takeDamage(sideEnemyDmg);
-
-              if (this.onEnemyDamage) {
-                this.onEnemyDamage(enemyShip, sideEnemyDmg, false);
-              }
-              if (this.combat && this.combat.spawnDamageNumber) {
-                this.combat.spawnDamageNumber(contactPos, sideEnemyDmg, 5);
-              }
-            } else {
-              // Enemy was faster and sideswiped player
-              const sidePlayerDmg = Math.round((8 + enemySpeed * 1.0) * (this.enemyDamageMultiplier || 1.0));
-              playerShip.takeDamage(sidePlayerDmg);
-              if (this.onPlayerDamage) this.onPlayerDamage(sidePlayerDmg);
-            }
-
-            this.combat.spawnSplinterExplosion(contactPos);
-            this.combat.spawnWaterSplash(contactPos);
-
-            if (this.sound && this.sound.playHullImpact) {
-              this.sound.playHullImpact();
-            }
-
-            if (this.onCameraShake) this.onCameraShake(0.65, 0.35);
-          }
-
-          playerShip.speed *= 0.82;
-          enemyShip.speed *= 0.82;
+        enemyShip.takeDamage(enemyRamDmg);
+        if (this.onEnemyDamage) {
+          this.onEnemyDamage(enemyShip, enemyRamDmg, true);
         }
+        if (this.combat && this.combat.spawnDamageNumber) {
+          this.combat.spawnDamageNumber(contactPos, enemyRamDmg, 5);
+        }
+
+        // Decisive physical recoil bounce: push rammer backwards so ships begin separating
+        playerShip.speed = -Math.min(5.0, Math.max(3.2, playerSpeed * 0.5));
+        playerShip.position.x -= normX * 4.5;
+        playerShip.position.z -= normZ * 4.5;
+        enemyShip.speed = Math.max(0, enemySpeed * 0.2);
+        if (playerShip.sailState === 2) {
+          playerShip.setSailState(1); // Knock sails down on violent ram
+        }
+
+        // Spurt wood splinters, debris and water surge
+        this.combat.spawnSplinterExplosion(contactPos);
+        this.combat.spawnSplinterExplosion(contactPos.clone().add(new THREE.Vector3(0, 1.2, 0)));
+        this.combat.spawnWaterSplash(contactPos);
+
+        if (this.sound && this.sound.playRammingCrash) {
+          this.sound.playRammingCrash();
+        }
+
+        if (this.onCameraShake) this.onCameraShake(1.2, 0.5);
+
+      } else if (isArmed && playerFrontRam && enemyFrontRam && (playerSpeed >= 3.8 || enemySpeed >= 3.8) && !this.isOnCooldown(pairKey)) {
+        // ========================================================
+        // HEAD-ON COLLISION (Both Ships Ram Each Other Bow-to-Bow!)
+        // ========================================================
+        this.setCooldown(pairKey, 2.5);
+        this.ramArmedPairs.set(pairKey, false);
+
+        // Both ships take damage strictly capped at 30% of their respective max health
+        const pMaxHp = playerShip.maxHealth || 100;
+        const eMaxHp = enemyShip.maxHealth || 100;
+        const pMaxDmg = Math.round(pMaxHp * 0.30);
+        const pMinDmg = Math.max(1, Math.round(pMaxHp * 0.12));
+        const eMaxDmg = Math.round(eMaxHp * 0.30);
+        const eMinDmg = Math.max(1, Math.round(eMaxHp * 0.12));
+
+        const sharedSpeed = Math.max(playerSpeed, enemySpeed);
+        const excessSpeed = Math.max(0, sharedSpeed - 3.8);
+        const speedRatio = Math.min(1.0, excessSpeed / 9.0);
+
+        const rawPDmg = Math.round((pMinDmg + (pMaxDmg - pMinDmg) * speedRatio) * (this.enemyDamageMultiplier || 1.0));
+        const rawEDmg = Math.round((eMinDmg + (eMaxDmg - eMinDmg) * speedRatio) * (this.playerDamageMultiplier || 1.0));
+
+        const pDmg = Math.min(pMaxDmg, Math.max(pMinDmg, rawPDmg));
+        const eDmg = Math.min(eMaxDmg, Math.max(eMinDmg, rawEDmg));
+
+        playerShip.takeDamage(pDmg);
+        enemyShip.takeDamage(eDmg);
+
+        if (this.onEnemyDamage) {
+          this.onEnemyDamage(enemyShip, eDmg, true);
+        }
+        if (this.onPlayerDamage) this.onPlayerDamage(pDmg);
+        if (this.combat && this.combat.spawnDamageNumber) {
+          this.combat.spawnDamageNumber(contactPos, eDmg, 5);
+        }
+
+        // Push both ships apart backwards
+        playerShip.speed = -Math.min(4.5, Math.max(3.0, playerSpeed * 0.45));
+        enemyShip.speed = -Math.min(4.5, Math.max(3.0, enemySpeed * 0.45));
+        playerShip.position.x -= normX * 3.5;
+        playerShip.position.z -= normZ * 3.5;
+        enemyShip.position.x += normX * 3.5;
+        enemyShip.position.z += normZ * 3.5;
+
+        this.combat.spawnSplinterExplosion(contactPos);
+        this.combat.spawnWaterSplash(contactPos);
+
+        if (this.sound && this.sound.playRammingCrash) {
+          this.sound.playRammingCrash();
+        }
+        if (this.onCameraShake) this.onCameraShake(1.3, 0.55);
+
+      } else if (isArmed && !playerFrontRam && enemyFrontRam && enemySpeed >= 3.8 && !this.isOnCooldown(pairKey)) {
+        // ========================================================
+        // ENEMY RAMS PLAYER FROM FRONT
+        // ========================================================
+        this.setCooldown(pairKey, 2.5);
+        this.ramArmedPairs.set(pairKey, false);
+
+        // Front hit damage strictly capped at 30% of player's max health (e.g. 100 HP -> max 30)
+        const pMaxHp = playerShip.maxHealth || 100;
+        const pMaxDmg = Math.round(pMaxHp * 0.30);
+        const pMinDmg = Math.max(1, Math.round(pMaxHp * 0.12));
+        const excessSpeed = Math.max(0, enemySpeed - 3.8);
+        const speedRatio = Math.min(1.0, excessSpeed / 9.0);
+        const rawPlayerDamage = Math.round((pMinDmg + (pMaxDmg - pMinDmg) * speedRatio) * (this.enemyDamageMultiplier || 1.0));
+        const playerDamage = Math.min(pMaxDmg, Math.max(pMinDmg, rawPlayerDamage));
+
+        playerShip.takeDamage(playerDamage);
+        enemyShip.speed = -Math.min(4.5, Math.max(3.0, enemySpeed * 0.45));
+        enemyShip.position.x += normX * 4.5;
+        enemyShip.position.z += normZ * 4.5;
+
+        this.combat.spawnSplinterExplosion(contactPos);
+        this.combat.spawnWaterSplash(contactPos);
+
+        if (this.sound && this.sound.playRammingCrash) {
+          this.sound.playRammingCrash();
+        }
+
+        if (this.onCameraShake) this.onCameraShake(1.1, 0.45);
+        if (this.onPlayerDamage) this.onPlayerDamage(playerDamage);
+
+      } else {
+        // Continuous contact, slow bumps or grinding (< 3.8 m/s or disarmed before backing away): 0 damage!
+        // Ships gently push apart and slide with smooth friction dampening without repeated hits
+        playerShip.speed *= 0.85;
+        enemyShip.speed *= 0.85;
       }
     }
   }

@@ -14,6 +14,7 @@ export class MultiplayerManager {
     this.remoteNameTag = null;
     this.remoteTargetPos = new THREE.Vector3();
     this.sendInterval = null;
+    this.matchRound = 1;
     this.callbacks = {
       onStatus: null,
       onConnect: null,
@@ -180,6 +181,7 @@ export class MultiplayerManager {
     const p = this.game.playerShip;
     const statePacket = {
       type: 'state',
+      round: this.matchRound,
       x: Number(p.position.x.toFixed(2)),
       y: Number(p.position.y.toFixed(2)),
       z: Number(p.position.z.toFixed(2)),
@@ -207,6 +209,11 @@ export class MultiplayerManager {
 
   handleIncomingMessage(data) {
     if (!data || !data.type) return;
+
+    // Discard stale round packets
+    if (data.round && data.round < this.matchRound) {
+      return;
+    }
 
     if (data.type === 'handshake') {
       console.log('🤝 [P2P Handshake received]:', data);
@@ -239,6 +246,7 @@ export class MultiplayerManager {
       this.showEmoteBanner(data.icon, data.text);
     } else if (data.type === 'start_pvp_battle') {
       console.log('⚔️ [P2P] Peer requested start PvP battle');
+      if (data.round) this.matchRound = Math.max(this.matchRound, data.round);
       if (this.game) {
         this.game.startMultiplayerBattle(false);
       }
@@ -267,6 +275,7 @@ export class MultiplayerManager {
       }
     } else if (data.type === 'pvp_rematch_start') {
       console.log('⚔️ [P2P] Peer confirmed Rematch Start');
+      if (data.round) this.matchRound = Math.max(this.matchRound, data.round);
       if (this.game) {
         this.game.restartPvPBattle(false);
       }
@@ -285,11 +294,16 @@ export class MultiplayerManager {
     this.remoteShip.name = (this.role === 'host') ? 'Challenger (P2P)' : 'Host Fleet (P2P)';
 
     // Initial duel arena placement:
-    // Host starts at (0, 0, -45) facing South; Client at (0, 0, 45) facing North
-    const spawnZ = (this.role === 'host') ? 45 : -45;
+    // Remote ship spawns safely far away from islands, facing towards archipelago:
+    // If local is host, remote client is at (0, 0, -260) facing South (Math.PI)
+    // If local is client, remote host is at (0, 0, 260) facing North (0)
+    const spawnZ = (this.role === 'host') ? -260 : 260;
     const spawnHeading = (this.role === 'host') ? Math.PI : 0;
     this.remoteShip.position.set(0, 0, spawnZ);
     this.remoteShip.heading = spawnHeading;
+    this.remoteShip.speed = 8.5;
+    this.remoteShip.targetSpeed = 8.5;
+    this.remoteShip.setSailState(1);
     this.remoteTargetPos.copy(this.remoteShip.position);
 
     // Create 3D Nameplate & Health Bar above remote ship
@@ -376,11 +390,21 @@ export class MultiplayerManager {
 
     if (data.health !== this.remoteShip.health) {
       this.remoteShip.health = data.health;
-      this.updateNameTag(data.health, data.maxHealth || 120);
+      this.updateNameTag(data.health, data.maxHealth || 100);
     }
 
     if (data.sinking && !this.remoteShip.isSinking) {
-      this.remoteShip.takeDamage(9999);
+      const gracePeriod = this.game && (performance.now() - (this.game.matchStartTime || 0) < 2500);
+      if (!gracePeriod) {
+        this.remoteShip.takeDamage(9999);
+      }
+    } else if (!data.sinking && this.remoteShip.isSinking) {
+      // Remote ship has restarted / respawned!
+      this.remoteShip.isSinking = false;
+      this.remoteShip.sinkProgress = 0;
+      this.remoteShip.health = data.health || 100;
+      if (this.remoteShip.group) this.remoteShip.group.visible = true;
+      this.updateNameTag(this.remoteShip.health, data.maxHealth || 100);
     }
   }
 

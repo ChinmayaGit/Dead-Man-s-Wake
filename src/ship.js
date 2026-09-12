@@ -65,7 +65,7 @@ export class Ship {
     this.heading = 0; // 0 = forward along -Z (North)
     this.speed = 0;
     this.targetSpeed = 0;
-    this.sailState = 2; // 0: Furled, 1: Half Sail, 2: Full Sail
+    this.sailState = 1; // 0: Furled, 1: Half Sail, 2: Full Sail
     this.rudder = 0; // -1.0 (Port/Left) to +1.0 (Starboard/Right)
     this.targetRudder = 0;
     this.currentAngularVelocity = 0; // rad/s
@@ -186,6 +186,7 @@ export class Ship {
 
             // Detect sails for furling/unfurling animation
             if (child.name.toLowerCase().includes('sail') || (child.parent && child.parent.name.toLowerCase().includes('sail'))) {
+              child.scale.y = this.sailState === 0 ? 0.15 : (this.sailState === 1 ? 0.75 : 1.0);
               this.sailsList.push(child);
             }
           }

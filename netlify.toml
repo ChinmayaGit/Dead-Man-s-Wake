@@ -1,0 +1,51 @@
+# Netlify Configuration for Dead-Man's-Wake
+# Production-ready static hosting with Single Page App routing and asset caching
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA Fallback: Redirect all routes to index.html with HTTP 200 status
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Cache immutable Vite JS/CSS chunks indefinitely (they have content hashes in filename)
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# 3D GLB & GLTF models: cache for 7 days + allow CORS for Three.js GLTFLoader
+[[headers]]
+  for = "/models/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+    Access-Control-Allow-Origin = "*"
+
+# Audio effects and ambient ocean sound
+[[headers]]
+  for = "/audio/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+    Access-Control-Allow-Origin = "*"
+
+# Textures and colormap
+[[headers]]
+  for = "/Textures/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+
+# Global security and performance headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+

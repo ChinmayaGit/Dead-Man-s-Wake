@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Ship } from './ship.js';
 
 export class EnemyShip {
-  constructor(scene, ocean, combatSystem, initialPos, name = 'HMS Defiance', maxHealth = 280, shipClass = 'Frigate') {
+  constructor(scene, ocean, combatSystem, initialPos, name = 'HMS Defiance', maxHealth = 200, shipClass = 'Frigate', modelName = 'ship-large.glb') {
     this.scene = scene;
     this.ocean = ocean;
     this.combat = combatSystem;
@@ -10,7 +10,7 @@ export class EnemyShip {
     this.shipClass = shipClass;
 
     // Load Royal Navy Frigate 3D GLB model with authentic naval warship health pool
-    this.ship = new Ship(scene, ocean, false, 'ship-large.glb', maxHealth);
+    this.ship = new Ship(scene, ocean, false, modelName, maxHealth);
     this.ship.position.copy(initialPos);
     this.ship.heading = Math.PI * 0.75;
     this.ship.setSailState(1);
@@ -26,19 +26,19 @@ export class EnemyShip {
     this.patrolAngle = Math.random() * Math.PI * 2;
     this.tacticalSide = (Math.random() > 0.5) ? 1 : -1;
 
-    // 3D Threat Diamond Billboard Sprite floating above the mast
+    // 3D Threat Diamond & Health Bar Billboard Sprite floating above the mast
     this.threatSprite = this.createThreatDiamondSprite();
     this.scene.add(this.threatSprite);
   }
 
   createThreatDiamondSprite() {
     const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
+    canvas.width = 280;
+    canvas.height = 96;
     this.diamondCanvas = canvas;
     this.diamondCtx = canvas.getContext('2d');
-    this.currentDiamondMode = null;
-    this.renderDiamondCanvas(false, false);
+    this.lastRenderedState = { mode: null, hp: -1, maxHp: -1 };
+    this.renderOverheadCanvas(false, false);
 
     const texture = new THREE.CanvasTexture(canvas);
     this.diamondTexture = texture;
@@ -49,76 +49,99 @@ export class EnemyShip {
     });
     const sprite = new THREE.Sprite(mat);
     sprite.renderOrder = 999;
-    sprite.scale.set(5.5, 5.5, 1);
+    sprite.scale.set(10.5, 3.6, 1);
     return sprite;
   }
 
-  renderDiamondCanvas(alerted, standoff) {
+  renderOverheadCanvas(alerted, standoff) {
     const mode = alerted ? 'alerted' : (standoff ? 'standoff' : 'patrol');
-    if (this.currentDiamondMode === mode) return;
-    this.currentDiamondMode = mode;
+    const curHp = Math.max(0, Math.round(this.ship.health));
+    const maxHp = this.ship.maxHealth || 200;
+
+    if (this.lastRenderedState &&
+        this.lastRenderedState.mode === mode &&
+        this.lastRenderedState.hp === curHp &&
+        this.lastRenderedState.maxHp === maxHp) {
+      return;
+    }
+    this.lastRenderedState = { mode, hp: curHp, maxHp };
 
     const ctx = this.diamondCtx;
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, 128, 128);
+    ctx.clearRect(0, 0, 280, 96);
 
-    const cx = 64;
-    const cy = 64;
-    const size = 36;
-
-    let fillGrad = ctx.createLinearGradient(cx - size, cy - size, cx + size, cy + size);
-    let strokeColor = '#ffffff';
-    let glowColor = 'rgba(255, 23, 68, 0.85)';
-
-    if (alerted) {
-      fillGrad.addColorStop(0, '#ff1744');
-      fillGrad.addColorStop(0.5, '#d50000');
-      fillGrad.addColorStop(1, '#880e4f');
-      strokeColor = '#ffffff';
-      glowColor = 'rgba(255, 23, 68, 0.95)';
-    } else if (standoff) {
-      fillGrad.addColorStop(0, '#ffa726');
-      fillGrad.addColorStop(0.5, '#f57c00');
-      fillGrad.addColorStop(1, '#e65100');
-      strokeColor = '#fff3e0';
-      glowColor = 'rgba(255, 167, 38, 0.7)';
-    } else {
-      fillGrad.addColorStop(0, '#ffca28');
-      fillGrad.addColorStop(0.5, '#ffb300');
-      fillGrad.addColorStop(1, '#ff8f00');
-      strokeColor = '#ffffff';
-      glowColor = 'rgba(255, 179, 0, 0.6)';
-    }
-
-    ctx.save();
-    ctx.shadowColor = glowColor;
-    ctx.shadowBlur = 14;
-
+    // Pill background
+    ctx.fillStyle = 'rgba(14, 10, 8, 0.90)';
     ctx.beginPath();
-    ctx.moveTo(cx, cy - size);
-    ctx.lineTo(cx + size * 0.72, cy);
-    ctx.lineTo(cx, cy + size);
-    ctx.lineTo(cx - size * 0.72, cy);
-    ctx.closePath();
-
-    ctx.fillStyle = fillGrad;
+    ctx.roundRect(8, 6, 264, 84, 10);
     ctx.fill();
 
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = strokeColor;
+    // Border
+    let borderColor = '#d4af37'; // gold
+    if (alerted) borderColor = '#ff1744';
+    else if (standoff) borderColor = '#ffa726';
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
+    // Threat diamond icon on left
+    const cx = 30;
+    const cy = 30;
+    const size = 11;
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.moveTo(cx, cy - size);
+    ctx.lineTo(cx + size * 0.75, cy);
+    ctx.lineTo(cx, cy + size);
+    ctx.lineTo(cx - size * 0.75, cy);
+    ctx.closePath();
+    ctx.fillStyle = alerted ? '#ff1744' : (standoff ? '#ffa726' : '#ffd54f');
     ctx.fill();
-
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     ctx.restore();
+
+    // Ship Name & Class
+    ctx.font = 'bold 15px Georgia, serif';
+    ctx.fillStyle = alerted ? '#ffcdd2' : '#fffde7';
+    ctx.textAlign = 'left';
+    const title = `${this.name} (${this.shipClass || 'Frigate'})`;
+    ctx.fillText(title, 48, 34);
+
+    // HP Bar background
+    const barX = 18;
+    const barY = 50;
+    const barW = 244;
+    const barH = 16;
+    ctx.fillStyle = '#2b1713';
+    ctx.fillRect(barX, barY, barW, barH);
+
+    // HP Bar fill
+    const pct = Math.max(0, Math.min(1.0, curHp / maxHp));
+    ctx.fillStyle = pct > 0.45 ? '#4caf50' : (pct > 0.2 ? '#ff9800' : '#f44336');
+    ctx.fillRect(barX, barY, barW * pct, barH);
+
+    // HP Bar border
+    ctx.strokeStyle = '#a68449';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(barX, barY, barW, barH);
+
+    // HP Bar text
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${curHp} / ${maxHp} HP`, barX + barW * 0.5, barY + 12.5);
 
     if (this.diamondTexture) {
       this.diamondTexture.needsUpdate = true;
     }
+  }
+
+  // Alias for backward compatibility
+  renderDiamondCanvas(alerted, standoff) {
+    this.renderOverheadCanvas(alerted, standoff);
   }
 
   update(delta, wind, playerShip) {
@@ -143,12 +166,12 @@ export class EnemyShip {
       // Render correct diamond visual state
       this.renderDiamondCanvas(this.isAlerted, this.standoff);
 
-      // Pulsing scale animation when alerted
+      // Pulsing scale animation when alerted (maintaining 280:96 aspect ratio)
       if (this.isAlerted) {
-        const pulse = 6.8 * (1.0 + Math.sin(performance.now() * 0.008) * 0.16);
-        this.threatSprite.scale.set(pulse, pulse, 1);
+        const pulseMult = 1.0 + Math.sin(performance.now() * 0.008) * 0.12;
+        this.threatSprite.scale.set(10.5 * pulseMult, 3.6 * pulseMult, 1);
       } else {
-        this.threatSprite.scale.set(5.2, 5.2, 1);
+        this.threatSprite.scale.set(10.5, 3.6, 1);
       }
     }
 
